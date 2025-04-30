@@ -67,7 +67,14 @@ public class GoogleVertexAiChatCompletionRequestTests extends ESTestCase {
 
     }
 
-    private static GoogleVertexAiUnifiedChatCompletionRequest createRequest(
+    public static GoogleVertexAiUnifiedChatCompletionRequest createRequest(
+        UnifiedChatInput input,
+        GoogleVertexAiChatCompletionModel model
+    ) {
+        return new GoogleVertexAiUnifiedChatCompletionWithoutAuthRequest(input, model);
+    }
+
+    public static GoogleVertexAiUnifiedChatCompletionRequest createRequest(
         String projectId,
         String location,
         String modelId,
