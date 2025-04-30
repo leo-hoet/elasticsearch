@@ -29,6 +29,8 @@ import org.elasticsearch.inference.configuration.SettingsConfigurationFieldType;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.inference.chunking.ChunkingSettingsBuilder;
 import org.elasticsearch.xpack.inference.chunking.EmbeddingRequestChunker;
+import org.elasticsearch.xpack.inference.external.action.SenderExecutableAction;
+import org.elasticsearch.xpack.inference.external.http.retry.ResponseHandler;
 import org.elasticsearch.xpack.inference.external.http.sender.EmbeddingsInput;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSender;
 import org.elasticsearch.xpack.inference.external.http.sender.InferenceInputs;
@@ -38,9 +40,11 @@ import org.elasticsearch.xpack.inference.services.SenderService;
 import org.elasticsearch.xpack.inference.services.ServiceComponents;
 import org.elasticsearch.xpack.inference.services.ServiceUtils;
 import org.elasticsearch.xpack.inference.services.googlevertexai.action.GoogleVertexAiActionCreator;
+import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsServiceSettings;
 import org.elasticsearch.xpack.inference.services.googlevertexai.rerank.GoogleVertexAiRerankModel;
+import org.elasticsearch.xpack.inference.services.googlevertexai.response.GoogleVertexAiChatCompletionResponseEntity;
 import org.elasticsearch.xpack.inference.services.settings.RateLimitSettings;
 
 import java.util.EnumSet;
@@ -48,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.elasticsearch.xpack.inference.external.action.ActionUtils.constructFailedToSendRequestMessage;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.MODEL_ID;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.createInvalidModelException;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.parsePersistedConfigErrorMsg;
@@ -55,17 +60,26 @@ import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeFrom
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeFromMapOrDefaultEmpty;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeFromMapOrThrowIfNull;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.throwIfNotEmptyMap;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.throwUnsupportedUnifiedCompletionOperation;
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.EMBEDDING_MAX_BATCH_SIZE;
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.LOCATION;
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.PROJECT_ID;
+import static org.elasticsearch.xpack.inference.services.googlevertexai.action.GoogleVertexAiActionCreator.COMPLETION_ERROR_PREFIX;
 
 public class GoogleVertexAiService extends SenderService {
 
     public static final String NAME = "googlevertexai";
 
     private static final String SERVICE_NAME = "Google Vertex AI";
-    private static final EnumSet<TaskType> supportedTaskTypes = EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK);
+    private static final EnumSet<TaskType> supportedTaskTypes = EnumSet.of(
+        TaskType.TEXT_EMBEDDING,
+        TaskType.RERANK,
+        TaskType.CHAT_COMPLETION
+    );
+
+    private static final ResponseHandler UNIFIED_CHAT_COMPLETION_HANDLER = new GoogleVertexAiResponseHandler(
+        "google vertexai chat completion",
+        GoogleVertexAiChatCompletionResponseEntity::fromResponse
+    );
 
     public static final EnumSet<InputType> VALID_INPUT_TYPE_VALUES = EnumSet.of(
         InputType.INGEST,
@@ -182,6 +196,7 @@ public class GoogleVertexAiService extends SenderService {
         return supportedTaskTypes;
     }
 
+    // TODO: Since we added a task type we need to change this?
     @Override
     public TransportVersion getMinimalSupportedVersion() {
         return TransportVersions.V_8_15_0;
@@ -220,7 +235,20 @@ public class GoogleVertexAiService extends SenderService {
         TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
     ) {
-        throwUnsupportedUnifiedCompletionOperation(NAME);
+        if (model instanceof GoogleVertexAiChatCompletionModel == false) {
+            listener.onFailure(createInvalidModelException(model));
+            return;
+        }
+
+        var chatCompletionModel = (GoogleVertexAiChatCompletionModel) model;
+        var updatedChatCompletionModel = GoogleVertexAiChatCompletionModel.of(chatCompletionModel, inputs.getRequest());
+
+        var manager = GoogleVertexAiCompletionRequestManager.of(updatedChatCompletionModel, getServiceComponents().threadPool());
+
+        var errorMessage = constructFailedToSendRequestMessage(COMPLETION_ERROR_PREFIX);
+        var action = new SenderExecutableAction(getSender(), manager, errorMessage);
+        action.execute(inputs, timeout, listener);
+
     }
 
     @Override
@@ -320,6 +348,17 @@ public class GoogleVertexAiService extends SenderService {
                 secretSettings,
                 context
             );
+
+            case CHAT_COMPLETION -> new GoogleVertexAiChatCompletionModel(
+                inferenceEntityId,
+                taskType,
+                NAME,
+                serviceSettings,
+                taskSettings,
+                secretSettings,
+                context
+            );
+
             default -> throw new ElasticsearchStatusException(failureMessage, RestStatus.BAD_REQUEST);
         };
     }
