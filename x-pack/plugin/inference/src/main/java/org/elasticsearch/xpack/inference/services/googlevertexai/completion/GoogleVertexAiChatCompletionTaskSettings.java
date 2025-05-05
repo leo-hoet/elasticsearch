@@ -9,6 +9,7 @@ package org.elasticsearch.xpack.inference.services.googlevertexai.completion;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.elasticsearch.TransportVersion;
+import org.elasticsearch.TransportVersions;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.inference.TaskSettings;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -22,32 +23,32 @@ public class GoogleVertexAiChatCompletionTaskSettings implements TaskSettings {
 
     @Override
     public boolean isEmpty() {
-        return false;
+        return true;
     }
 
     @Override
     public TaskSettings updatedTaskSettings(Map<String, Object> newSettings) {
-        return null;
+        return this;
     }
 
     @Override
     public String getWriteableName() {
-        return "";
+        return NAME;
     }
 
     @Override
     public TransportVersion getMinimalSupportedVersion() {
-        return null;
+        return TransportVersions.ML_INFERENCE_VERTEXAI_CHATCOMPLETION_ADDED;
     }
 
     @Override
-    public void writeTo(StreamOutput out) throws IOException {
-
-    }
+    public void writeTo(StreamOutput out) throws IOException {}
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return null;
+        builder.startObject();
+        builder.endObject();
+        return builder;
     }
 
     public static GoogleVertexAiChatCompletionTaskSettings fromMap(Map<String, Object> map) {
