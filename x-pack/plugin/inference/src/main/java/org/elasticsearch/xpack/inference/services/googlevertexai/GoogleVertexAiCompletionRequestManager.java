@@ -31,7 +31,7 @@ public class GoogleVertexAiCompletionRequestManager extends GoogleVertexAiReques
     private static final ResponseHandler HANDLER = createGoogleVertexAiResponseHandler();
 
     private static ResponseHandler createGoogleVertexAiResponseHandler() {
-        return new GoogleVertexAiResponseHandler(
+        return new GoogleVertexAiUnifiedChatCompletionResponseHandler(
             "Google Vertex AI chat completion",
             GoogleVertexAiChatCompletionResponseEntity::fromResponse
         );

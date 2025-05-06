@@ -68,6 +68,11 @@ public class GoogleVertexAiUnifiedChatCompletionRequest implements GoogleVertexA
     }
 
     @Override
+    public boolean isStreaming() {
+        return unifiedChatInput.stream();
+    }
+
+    @Override
     public String getInferenceEntityId() {
         return model.getInferenceEntityId();
     }

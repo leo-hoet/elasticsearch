@@ -7,7 +7,9 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai.request;
 
+import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.inference.UnifiedCompletionRequest;
+import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.inference.external.http.sender.UnifiedChatInput;
@@ -31,7 +33,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     // TODO: Add other generationConfig fields if needed (e.g., stopSequences, topK)
 
     private final UnifiedChatInput unifiedChatInput;
-    private final GoogleVertexAiChatCompletionModel model;
+    private final GoogleVertexAiChatCompletionModel model; // TODO: This is not being used?
 
     private static final String USER_ROLE = "user";
     private static final String MODEL_ROLE = "model";
@@ -49,15 +51,33 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
             return messageRoleLowered;
         }
 
-        // TODO: Here is OK to throw an IOException?
-        throw new IOException(
+        var errorMessage =
             format(
                 "Role %s not supported by Google VertexAI ChatCompletion. Supported roles: '%s', '%s'",
                 messageRole,
                 USER_ROLE,
                 MODEL_ROLE
-            )
-        );
+            );
+        throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+    }
+
+    private void validateAndAddContentObjectsToBuilder(XContentBuilder builder, UnifiedCompletionRequest.ContentObjects contentObjects)
+        throws IOException {
+
+        for (var contentObject : contentObjects.contentObjects()) {
+            if (contentObject.type().equals(TEXT) == false) {
+                var errorMessage = format(
+                    "Type %s not supported by Google VertexAI ChatCompletion. Supported types: 'text'",
+                    contentObject.type()
+                );
+                throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+            }
+            // We are only supporting Text messages but VertexAI supports more types:
+            // https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Content?_gl=1*q4uxnh*_up*MQ..&gclid=CjwKCAjwwqfABhBcEiwAZJjC3uBQNP9KUMZX8AGXvFXP2rIEQSfCX9RLP5gjzx5r-4xz1daBSxM7GBoCY64QAvD_BwE&gclsrc=aw.ds#Part
+            builder.startObject();
+            builder.field(TEXT, contentObject.text());
+            builder.endObject();
+        }
 
     }
 
@@ -69,9 +89,21 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
             builder.startObject();
             builder.field(ROLE, messageRoleToGoogleVertexAiSupportedRole(message.role()));
             builder.startArray(PARTS);
-            builder.startObject();
-            builder.field(TEXT, message.content().toString());
-            builder.endObject();
+            switch (message.content()) {
+                case UnifiedCompletionRequest.ContentString contentString -> {
+                    builder.startObject();
+                    builder.field(TEXT, contentString.content());
+                    builder.endObject();
+                }
+                case UnifiedCompletionRequest.ContentObjects contentObjects -> validateAndAddContentObjectsToBuilder(
+                    builder,
+                    contentObjects
+                );
+                case null -> {
+                    var errorMessage = "Google VertexAI API requires at least one text message but none were provided";
+                    throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+                }
+            }
             builder.endArray();
             builder.endObject();
         }
