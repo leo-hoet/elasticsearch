@@ -30,7 +30,6 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.inference.chunking.ChunkingSettingsBuilder;
 import org.elasticsearch.xpack.inference.chunking.EmbeddingRequestChunker;
 import org.elasticsearch.xpack.inference.external.action.SenderExecutableAction;
-import org.elasticsearch.xpack.inference.external.http.retry.ResponseHandler;
 import org.elasticsearch.xpack.inference.external.http.sender.EmbeddingsInput;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSender;
 import org.elasticsearch.xpack.inference.external.http.sender.InferenceInputs;
@@ -44,13 +43,13 @@ import org.elasticsearch.xpack.inference.services.googlevertexai.completion.Goog
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsServiceSettings;
 import org.elasticsearch.xpack.inference.services.googlevertexai.rerank.GoogleVertexAiRerankModel;
-import org.elasticsearch.xpack.inference.services.googlevertexai.response.GoogleVertexAiChatCompletionResponseEntity;
 import org.elasticsearch.xpack.inference.services.settings.RateLimitSettings;
 
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.elasticsearch.xpack.inference.external.action.ActionUtils.constructFailedToSendRequestMessage;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.MODEL_ID;
@@ -76,10 +75,6 @@ public class GoogleVertexAiService extends SenderService {
         TaskType.CHAT_COMPLETION
     );
 
-    private static final ResponseHandler UNIFIED_CHAT_COMPLETION_HANDLER = new GoogleVertexAiResponseHandler(
-        "google vertexai chat completion",
-        GoogleVertexAiChatCompletionResponseEntity::fromResponse
-    );
 
     public static final EnumSet<InputType> VALID_INPUT_TYPE_VALUES = EnumSet.of(
         InputType.INGEST,
@@ -89,6 +84,11 @@ public class GoogleVertexAiService extends SenderService {
         InputType.INTERNAL_INGEST,
         InputType.INTERNAL_SEARCH
     );
+
+    @Override
+    public Set<TaskType> supportedStreamingTasks() {
+        return EnumSet.of(TaskType.CHAT_COMPLETION);
+    }
 
     public GoogleVertexAiService(HttpRequestSender.Factory factory, ServiceComponents serviceComponents) {
         super(factory, serviceComponents);
@@ -239,7 +239,6 @@ public class GoogleVertexAiService extends SenderService {
             listener.onFailure(createInvalidModelException(model));
             return;
         }
-
         var chatCompletionModel = (GoogleVertexAiChatCompletionModel) model;
         var updatedChatCompletionModel = GoogleVertexAiChatCompletionModel.of(chatCompletionModel, inputs.getRequest());
 
@@ -248,7 +247,6 @@ public class GoogleVertexAiService extends SenderService {
         var errorMessage = constructFailedToSendRequestMessage(COMPLETION_ERROR_PREFIX);
         var action = new SenderExecutableAction(getSender(), manager, errorMessage);
         action.execute(inputs, timeout, listener);
-
     }
 
     @Override

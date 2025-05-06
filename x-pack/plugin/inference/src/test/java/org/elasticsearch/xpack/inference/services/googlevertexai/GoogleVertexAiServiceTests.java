@@ -6,7 +6,6 @@
  */
 
 package org.elasticsearch.xpack.inference.services.googlevertexai;
-
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.bytes.BytesArray;
@@ -14,6 +13,7 @@ import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.ChunkingSettings;
 import org.elasticsearch.inference.InferenceServiceConfiguration;
 import org.elasticsearch.inference.InputType;
@@ -26,6 +26,7 @@ import org.elasticsearch.test.http.MockWebServer;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentType;
+import org.elasticsearch.xpack.core.inference.action.InferenceAction;
 import org.elasticsearch.xpack.inference.external.http.HttpClientManager;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSender;
 import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
@@ -41,10 +42,13 @@ import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
+import org.elasticsearch.action.support.PlainActionFuture;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.elasticsearch.common.xcontent.XContentHelper.toXContent;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertToXContentEquivalent;
@@ -63,6 +67,7 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
     private ThreadPool threadPool;
 
     private HttpClientManager clientManager;
+    private static final TimeValue TIMEOUT = new TimeValue(30, TimeUnit.SECONDS);
 
     @Before
     public void init() throws Exception {
@@ -76,6 +81,57 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
         clientManager.close();
         terminate(threadPool);
         webServer.close();
+    }
+
+    public void testUnifiedCompletionInfer_HappyPath() throws Exception {
+        // 1. Mock response (array of chunks)
+        String responseJson = """
+            [
+              {
+                "candidates": [
+                  { "content": { "role": "model", "parts": [ { "text": "This is " } ] } }
+                ]
+              },
+              {
+                "candidates": [
+                  { "content": { "role": "model", "parts": [ { "text": "a test response." } ] } }
+                ],
+                "usageMetadata": { "promptTokenCount": 5, "candidatesTokenCount": 4, "totalTokenCount": 9 }
+              }
+            ]
+            """;
+        webServer.enqueue(new MockResponse().setResponseCode(200).setBody(responseJson));
+
+        // 2. Setup service and sender factory
+        var senderFactory = HttpRequestSenderTests.createSenderFactory(threadPool, clientManager);
+        try (var service = new GoogleVertexAiService(senderFactory, createWithEmptySettings(threadPool))) {
+
+            // 3. Create model and input
+            // Use a dummy JSON string for serviceAccountJson in tests
+            String dummyServiceAccountJson =
+                "{\"type\":\"service_account\", \"client_id\": \"1\", \"client_email\": \"test@demo.com\", \"private_key\":\"-----BEGIN PRIVATE KEY-----\\nprivate__key\\n-----END PRIVATE KEY-----\\n\n\", \"private_key_id\":\"1\"}";
+
+            var model = GoogleVertexAiChatCompletionModelTests.createCompletionModel(
+                "test-project",
+                "us-central1",
+                "gemini-pro",
+                dummyServiceAccountJson, // Pass dummy JSON
+                null // No specific rate limit settings needed for this test
+            );
+
+            var input = UnifiedCompletionRequest.of(
+                List.of(new UnifiedCompletionRequest.Message(new UnifiedCompletionRequest.ContentString("Say test"), "user", null, null))
+            );
+            // 4. Call method
+            PlainActionFuture<InferenceServiceResults> listener = new PlainActionFuture<>();
+            service.unifiedCompletionInfer(model, input, InferenceAction.Request.DEFAULT_TIMEOUT, listener);
+
+            // 5. Assertions
+            var result = listener.actionGet(TIMEOUT);
+            InferenceEventsAssertion.assertThat(result).hasFinishedStream().hasNoErrors();
+            // TODO: Rename and complete this test. Right now it does not work bc the request requires a valid PCK#8 key. Mock it? Inject
+            // it?
+        }
     }
 
     public void testParseRequestConfig_CreatesGoogleVertexAiEmbeddingsModel() throws IOException {
