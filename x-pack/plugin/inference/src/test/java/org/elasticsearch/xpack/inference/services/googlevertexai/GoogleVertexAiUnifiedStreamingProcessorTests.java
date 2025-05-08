@@ -37,6 +37,9 @@ public class GoogleVertexAiUnifiedStreamingProcessorTests extends ESTestCase {
                     "finishReason": "MAXTOKENS"
                   } ],
                   "usageMetadata" : {
+                    "promptTokenCount": 10,
+                    "candidatesTokenCount": 20,
+                    "totalTokenCount": 30,
                     "trafficType" : "ON_DEMAND"
                   },
                   "modelVersion" : "gemini-2.0-flash-lite",
@@ -67,22 +70,133 @@ public class GoogleVertexAiUnifiedStreamingProcessorTests extends ESTestCase {
             assertEquals("getWeatherData", toolCall.function().name());
             assertEquals("{\"unit\":\"celsius\",\"location\":\"buenos aires, argentina\"}", toolCall.function().arguments());
 
+            assertNotNull(chunk.usage());
+            assertEquals(20, chunk.usage().completionTokens());
+            assertEquals(10, chunk.usage().promptTokens());
+            assertEquals(30, chunk.usage().totalTokens());
+
         } catch (IOException e) {
-            fail();
+            fail("IOException during test: " + e.getMessage());
         }
     }
 
-    public void testJsonError() {
-        String json = String.format("""
+    public void testJsonLiteral_optionalTopLevelFieldsMissing() {
+        String json = """
                 {
-                  "error": {
-                    "code": 400,
-                    "message": "Invalid JSON payload received. Expected an object key or }.\\n# Changed tool name \\n^",
-                    "status": "INVALID_ARGUMENT"
-                  }
+                  "candidates" : [ {
+                    "content" : {
+                      "role" : "model",
+                      "parts" : [ { "text" : "Hello" } ]
+                    },
+                    "finishReason": "STOP"
+                  } ]
                 }
-            """);
-        fail("Test not implemented");
+            """;
 
+        XContentParserConfiguration parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(
+            LoggingDeprecationHandler.INSTANCE
+        );
+
+        try (XContentParser parser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, json)) {
+            var chunk = GoogleVertexAiUnifiedStreamingProcessor.GoogleVertexAiChatCompletionChunkParser.parse(parser);
+
+            assertNull(chunk.id());
+            assertEquals(1, chunk.choices().size());
+            var choice = chunk.choices().getFirst();
+            assertEquals("Hello", choice.delta().content());
+            assertEquals("model", choice.delta().role());
+            assertNull(chunk.model());
+            assertEquals("STOP", choice.finishReason());
+            assertEquals(0, choice.index());
+            assertNull(choice.delta().toolCalls());
+            assertNull(chunk.usage());
+
+        } catch (IOException e) {
+            fail("IOException during test: " + e.getMessage());
+        }
+    }
+
+    public void testJsonLiteral_functionCallArgsMissing() {
+        String json = """
+                {
+                  "candidates" : [ {
+                    "content" : {
+                      "role" : "model",
+                      "parts" : [
+                        {
+                          "functionCall": {
+                            "name": "getLocation"
+                          }
+                        }
+                      ]
+                    }
+                  } ],
+                  "responseId" : "resId789"
+                }
+            """;
+        XContentParserConfiguration parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(
+            LoggingDeprecationHandler.INSTANCE
+        );
+
+        try (XContentParser parser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, json)) {
+            var chunk = GoogleVertexAiUnifiedStreamingProcessor.GoogleVertexAiChatCompletionChunkParser.parse(parser);
+
+            assertEquals("resId789", chunk.id());
+            assertEquals(1, chunk.choices().size());
+            var choice = chunk.choices().getFirst();
+            assertEquals("model", choice.delta().role());
+            assertNull(choice.delta().content());
+
+            assertNotNull(choice.delta().toolCalls());
+            assertEquals(1, choice.delta().toolCalls().size());
+            var toolCall = choice.delta().toolCalls().getFirst();
+            assertEquals("getLocation", toolCall.function().name());
+            assertNull(toolCall.function().arguments());
+
+        } catch (IOException e) {
+            fail("IOException during test: " + e.getMessage());
+        }
+    }
+
+    public void testJsonLiteral_multipleTextParts() {
+        String json = """
+                {
+                  "candidates" : [ {
+                    "content" : {
+                      "role" : "model",
+                      "parts" : [
+                        { "text" : "This is the first part. "  },
+                        { "text" : "This is the second part." }
+                      ]
+                    },
+                    "finishReason": "STOP"
+                  } ],
+                  "responseId" : "multiTextId"
+                }
+            """;
+
+        XContentParserConfiguration parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(
+            LoggingDeprecationHandler.INSTANCE
+        );
+
+        try (XContentParser parser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, json)) {
+            var chunk = GoogleVertexAiUnifiedStreamingProcessor.GoogleVertexAiChatCompletionChunkParser.parse(parser);
+
+            assertEquals("multiTextId", chunk.id());
+            assertEquals(1, chunk.choices().size());
+
+            var choice = chunk.choices().getFirst();
+            assertEquals("model", choice.delta().role());
+            // Verify that the text from multiple parts is concatenated
+            assertEquals("This is the first part. This is the second part.", choice.delta().content());
+            assertEquals("STOP", choice.finishReason());
+            assertEquals(0, choice.index());
+            assertNull(choice.delta().toolCalls()); // No function calls in this test case
+            assertNull(chunk.model());
+            assertNull(chunk.usage());
+
+        } catch (IOException e) {
+            fail("IOException during test: " + e.getMessage());
+        }
     }
 }
