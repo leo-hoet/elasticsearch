@@ -9,9 +9,10 @@ package org.elasticsearch.xpack.inference.services.googlevertexai;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.ElasticsearchStatusException;
+import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
-import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -23,10 +24,13 @@ import org.elasticsearch.xpack.inference.common.DelegatingProcessor;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.BiFunction;
 
@@ -39,7 +43,6 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
 
     private static final Logger logger = LogManager.getLogger(GoogleVertexAiUnifiedStreamingProcessor.class);
 
-    // Response Fields
     private static final String CANDIDATES_FIELD = "candidates";
     private static final String CONTENT_FIELD = "content";
     private static final String ROLE_FIELD = "role";
@@ -51,14 +54,13 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
     private static final String PROMPT_TOKEN_COUNT_FIELD = "promptTokenCount";
     private static final String CANDIDATES_TOKEN_COUNT_FIELD = "candidatesTokenCount";
     private static final String TOTAL_TOKEN_COUNT_FIELD = "totalTokenCount";
-    private static final String ERROR_FIELD = "error";
-    private static final String ERROR_CODE_FIELD = "code";
-    private static final String ERROR_MESSAGE_FIELD = "message";
-    private static final String ERROR_STATUS_FIELD = "status";
+    private static final String MODEL_VERSION_FIELD = "modelVersion";
+    private static final String RESPONSE_ID_FIELD = "responseId";
+    private static final String FUNCTION_CALL_FIELD = "functionCall";
+    private static final String FUNCTION_NAME_FIELD = "name";
+    private static final String FUNCTION_ARGS_FIELD = "args";
 
-    // Internal representation fields mapping to StreamingUnifiedChatCompletionResults
-    // Note: Google Vertex AI doesn't provide chunk ID, model, or object per chunk like OpenAI.
-    // We will construct the Choice.Delta based on the Candidate's content.
+    private static final String FUNCTION_TYPE = "function";
 
     private final BiFunction<String, Exception, Exception> errorParser;
     private final Deque<StreamingUnifiedChatCompletionResults.ChatCompletionChunk> buffer = new LinkedBlockingDeque<>();
@@ -72,224 +74,157 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         if (buffer.isEmpty()) {
             super.upstreamRequest(n);
         } else {
-            // Drain buffer first
             downstream().onNext(new StreamingUnifiedChatCompletionResults.Results(singleItem(buffer.poll())));
         }
     }
 
     @Override
-    protected void next(Deque<byte[]> item) throws Exception {
+    protected void next(Deque<byte[]> events) throws Exception {
 
         var parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(LoggingDeprecationHandler.INSTANCE);
-        var results = new ArrayDeque<StreamingUnifiedChatCompletionResults.ChatCompletionChunk>(item.size());
+        var results = new ArrayDeque<StreamingUnifiedChatCompletionResults.ChatCompletionChunk>(events.size());
 
-        for (var event : item) {
-            var completionChunk = parse(parserConfig, event);
-            completionChunk.forEachRemaining(results::offer);
+        for (var event : events) {
+            try {
+                var completionChunk = parse(parserConfig, event);
+                completionChunk.forEachRemaining(results::offer);
+            } catch (Exception e) {
+                var eventString = Arrays.toString(event);
+                logger.warn("Failed to parse event from Google Vertex AI provider: {}", eventString);
+                throw errorParser.apply(eventString, e);
+            }
         }
 
         if (results.isEmpty()) {
-            // Request more if we didn't produce anything
             upstream().request(1);
         } else if (results.size() == 1) {
-            // Common case: one event produced one chunk
             downstream().onNext(new StreamingUnifiedChatCompletionResults.Results(results));
         } else {
-            // Unlikely for Vertex AI, but handle buffering just in case
+            // Vertex AI doesn't specify how many events per chunk, so handle buffering just in case
             logger.warn("Received multiple chunks ({}) from a single SSE batch, buffering.", results.size());
             var firstItem = singleItem(results.poll());
             while (results.isEmpty() == false) {
                 buffer.offer(results.poll());
             }
             downstream().onNext(new StreamingUnifiedChatCompletionResults.Results(firstItem));
-            // If buffer has items, the next upstreamRequest will handle sending them.
         }
     }
 
-    // TODO: This method is already called with valid Json in event. Maybe we dont need the validation logic, just parse the event
-    // Leaving this for now but highly guaranteed that this will be removed
     private Iterator<StreamingUnifiedChatCompletionResults.ChatCompletionChunk> parse(
         XContentParserConfiguration parserConfig,
         byte[] event
     ) throws IOException {
-        // Google Vertex AI doesn't have a specific "[DONE]" message like OpenAI.
-        // The stream ends when the connection closes or a chunk with a final finishReason arrives.
-
         try (XContentParser jsonParser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, event)) {
             moveToFirstToken(jsonParser);
             ensureExpectedToken(XContentParser.Token.START_OBJECT, jsonParser.currentToken(), jsonParser);
 
-            // Check for top-level error first
-            XContentParser.Token token;
-            String currentFieldName = null;
-            while ((token = jsonParser.nextToken()) != XContentParser.Token.END_OBJECT) {
-                if (token == XContentParser.Token.FIELD_NAME) {
-                    currentFieldName = jsonParser.currentName();
-                } else if (token == XContentParser.Token.START_OBJECT) {
-                    if (ERROR_FIELD.equals(currentFieldName)) {
-                        VertexAiError error = VertexAiErrorParser.parse(jsonParser);
-                        // Map Google's error to ElasticsearchStatusException
-                        // Status mapping might need refinement based on Google's codes
-                        RestStatus status = RestStatus.fromCode(error.code() != 0 ? error.code() : 500);
-                        throw new ElasticsearchStatusException(
-                            "Error from Google Vertex AI: [{}] {}",
-                            status,
-                            error.message() != null ? error.message() : "Unknown error",
-                            status
-                        );
-                    } else {
-                        // If it's not the error field, parse as a regular chunk
-                        // We need to reset the parser or re-parse, as we consumed tokens.
-                        // Easiest is to re-parse the original data.
-                        try (XContentParser chunkParser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, event)) {
-                            moveToFirstToken(chunkParser);
-                            StreamingUnifiedChatCompletionResults.ChatCompletionChunk chunk = GoogleVertexAiChatCompletionChunkParser.parse(
-                                chunkParser
-                            );
-                            // If parsing succeeds but yields no candidates (e.g., empty response), return empty.
-                            if (chunk.choices() == null || chunk.choices().isEmpty()) {
-                                return Collections.emptyIterator();
-                            }
-                            return Collections.singleton(chunk).iterator();
-                        }
+            StreamingUnifiedChatCompletionResults.ChatCompletionChunk chunk = GoogleVertexAiChatCompletionChunkParser.parse(jsonParser);
+            return Collections.singleton(chunk).iterator();
+        }
+    }
+
+    public static class GoogleVertexAiChatCompletionChunkParser {
+        private static @Nullable StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Usage usageMetadataToChunk(
+            @Nullable UsageMetadata usage
+        ) {
+            if (usage == null) {
+                return null;
+            }
+            return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Usage(
+                usage.candidatesTokenCount(),
+                usage.promptTokenCount(),
+                usage.totalTokenCount()
+            );
+        }
+
+        private static StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice candidateToChoice(Candidate candidate) {
+            StringBuilder contentTextBuilder = new StringBuilder();
+            List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta.ToolCall> toolCalls = new ArrayList<>();
+
+            String role = null;
+
+            var contentAndPartsAreNotEmpty = candidate.content() != null
+                && candidate.content().parts() != null
+                && candidate.content().parts().isEmpty() == false;
+
+            if (contentAndPartsAreNotEmpty) {
+                role = candidate.content().role(); // Role is at the content level
+                for (Part part : candidate.content().parts()) {
+                    if (part.text() != null) {
+                        contentTextBuilder.append(part.text());
                     }
-                } else {
-                    // Ignore other top-level fields if any, besides "error" and the main structure
-                    jsonParser.skipChildren();
+                    if (part.functionCall() != null) {
+                        FunctionCall fc = part.functionCall();
+                        var function = new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta.ToolCall.Function(
+                            fc.args(),
+                            fc.name()
+                        );
+                        toolCalls.add(
+                            new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta.ToolCall(
+                                0, // No explicit ID from VertexAI so we use 0
+                                function.name(), // VertexAI does not provide an id for the function call so we use the name
+                                function,
+                                FUNCTION_TYPE
+                            )
+                        );
+                    }
                 }
             }
-            // If we reach here, it means the object was parsed but didn't match the error structure
-            // and didn't trigger the re-parse logic (e.g., empty object {}). Re-parse to be sure.
-            try (XContentParser chunkParser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, event)) {
-                moveToFirstToken(chunkParser);
-                StreamingUnifiedChatCompletionResults.ChatCompletionChunk chunk = GoogleVertexAiChatCompletionChunkParser.parse(
-                    chunkParser
-                );
-                // If parsing succeeds but yields no candidates (e.g., empty response), return empty.
-                if (chunk.choices() == null || chunk.choices().isEmpty()) {
-                    return Collections.emptyIterator();
-                }
-                return Collections.singleton(chunk).iterator();
-            }
+
+            List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta.ToolCall> finalToolCalls = toolCalls.isEmpty()
+                ? null
+                : toolCalls;
+
+            var delta = new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta(
+                contentTextBuilder.isEmpty() ? null : contentTextBuilder.toString(),
+                null,
+                role,
+                finalToolCalls
+            );
+
+            return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice(delta, candidate.finishReason(), candidate.index());
         }
-    }
-
-    // Helper class to represent Google Vertex AI error structure
-    private record VertexAiError(int code, String message, String status) {}
-
-    private static class VertexAiErrorParser {
-        private static final ConstructingObjectParser<VertexAiError, Void> PARSER = new ConstructingObjectParser<>(
-            ERROR_FIELD,
-            true,
-            args -> new VertexAiError((int) args[0], (String) args[1], (String) args[2])
-        );
-
-        static {
-            PARSER.declareInt(ConstructingObjectParser.optionalConstructorArg(), new ParseField(ERROR_CODE_FIELD));
-            PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(ERROR_MESSAGE_FIELD));
-            PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(ERROR_STATUS_FIELD));
-            // Ignore unknown fields
-        }
-
-        public static VertexAiError parse(XContentParser parser) throws IOException {
-            return PARSER.parse(parser, null);
-        }
-    }
-
-    // Main parser for the chunk structure
-    private static class GoogleVertexAiChatCompletionChunkParser {
         @SuppressWarnings("unchecked")
         private static final ConstructingObjectParser<StreamingUnifiedChatCompletionResults.ChatCompletionChunk, Void> PARSER =
             new ConstructingObjectParser<>(
                 "google_vertexai_chat_completion_chunk",
                 true,
-                // Args: candidates, usageMetadata
                 args -> {
                     List<Candidate> candidates = (List<Candidate>) args[0];
                     UsageMetadata usage = (UsageMetadata) args[1];
+                    String modelversion = (String) args[2];
+                    String responseId = (String) args[3];
 
-                    if (candidates == null || candidates.isEmpty()) {
-                        // If there are no candidates, but usage info exists, create a chunk just for usage.
-                        if (usage != null) {
-                            return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk(
-                                null, // No ID from Vertex AI
-                                Collections.emptyList(),
-                                null, // No model per chunk
-                                null, // No object per chunk
-                                new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Usage(
-                                    usage.candidatesTokenCount(),
-                                    usage.promptTokenCount(),
-                                    usage.totalTokenCount()
-                                )
-                            );
-                        }
-                        // Return a mostly empty chunk if no candidates and no usage
-                        return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk(
-                            null,
-                            Collections.emptyList(),
-                            null,
-                            null,
-                            null
-                        );
-                    }
 
-                    // Map candidates to choices
-                    List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice> choices = candidates.stream().map(candidate -> {
-                        String contentText = null;
-                        String role = null;
-                        if (candidate.content() != null
-                            && candidate.content().parts() != null
-                            && candidate.content().parts().isEmpty() == false) {
-                            // Assuming only one part with text for now
-                            contentText = candidate.content().parts().get(0).text();
-                            role = candidate.content().role();
-                        }
+                    boolean candidatesIsEmpty = candidates == null || candidates.isEmpty();
+                    List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice> choices = candidatesIsEmpty
+                        ? Collections.emptyList()
+                        : candidates.stream().map(GoogleVertexAiChatCompletionChunkParser::candidateToChoice).toList();
 
-                        var delta = new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice.Delta(
-                            contentText,
-                            null, // No refusal field in Vertex AI
-                            role,
-                            null // TODO: Handle tool/function calls if they appear in streaming
-                        );
-
-                        return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice(
-                            delta,
-                            candidate.finishReason(),
-                            candidate.index()
-                        );
-                    }).toList();
-
-                    StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Usage usageResult = null;
-                    if (usage != null) {
-                        usageResult = new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Usage(
-                            usage.candidatesTokenCount(),
-                            usage.promptTokenCount(),
-                            usage.totalTokenCount()
-                        );
-                    }
 
                     return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk(
-                        null, // No ID from Vertex AI
+                        responseId,
                         choices,
-                        null, // No model per chunk
-                        null, // No object per chunk
-                        usageResult
+                        modelversion,
+                        null,
+                        usageMetadataToChunk(usage)
                     );
                 }
             );
 
         static {
             PARSER.declareObjectArray(
-                ConstructingObjectParser.optionalConstructorArg(), // Candidates might be absent
+                ConstructingObjectParser.optionalConstructorArg(),
                 (p, c) -> CandidateParser.parse(p),
                 new ParseField(CANDIDATES_FIELD)
             );
             PARSER.declareObject(
-                ConstructingObjectParser.optionalConstructorArg(), // Usage might be absent until the end
+                ConstructingObjectParser.optionalConstructorArg(),
                 (p, c) -> UsageMetadataParser.parse(p),
                 new ParseField(USAGE_METADATA_FIELD)
             );
-            // Ignore other top-level fields like safetyRatings, citationMetadata etc.
+            PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(MODEL_VERSION_FIELD));
+            PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(RESPONSE_ID_FIELD));
         }
 
         public static StreamingUnifiedChatCompletionResults.ChatCompletionChunk parse(XContentParser parser) throws IOException {
@@ -305,7 +240,12 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         private static final ConstructingObjectParser<Candidate, Void> PARSER = new ConstructingObjectParser<>(
             "candidate",
             true,
-            args -> new Candidate((Content) args[0], (String) args[1], args[2] == null ? 0 : (int) args[2]) // index might be null
+            args -> {
+                var content = (Content) args[0];
+                var finishReason = (String) args[1];
+                var index = args[2] == null ? 0 : (int) args[2];
+                return new Candidate(content, finishReason, index);
+            }
         );
 
         static {
@@ -316,7 +256,6 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
             );
             PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(FINISH_REASON_FIELD));
             PARSER.declareInt(ConstructingObjectParser.optionalConstructorArg(), new ParseField(INDEX_FIELD));
-            // Ignore safetyRatings, citationMetadata, etc.
         }
 
         public static Candidate parse(XContentParser parser) throws IOException {
@@ -348,18 +287,22 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         }
     }
 
-    private record Part(String text) {} // Assuming only text parts for now
+    private record Part(@Nullable String text, @Nullable FunctionCall functionCall) {} // Modified
 
     private static class PartParser {
         private static final ConstructingObjectParser<Part, Void> PARSER = new ConstructingObjectParser<>(
             "part",
             true,
-            args -> new Part((String) args[0])
+            args -> new Part((String) args[0], (FunctionCall) args[1])
         );
 
         static {
             PARSER.declareString(ConstructingObjectParser.optionalConstructorArg(), new ParseField(TEXT_FIELD));
-            // Ignore other part types like functionCall, functionResponse, fileData, etc. for now
+            PARSER.declareObject(
+                ConstructingObjectParser.optionalConstructorArg(),
+                (p, c) -> FunctionCallParser.parse(p),
+                new ParseField(FUNCTION_CALL_FIELD)
+            );
         }
 
         public static Part parse(XContentParser parser) throws IOException {
@@ -367,6 +310,40 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         }
     }
 
+    private record FunctionCall(String name, String args) {}
+
+    private static class FunctionCallParser {
+        private static final ConstructingObjectParser<FunctionCall, Void> PARSER = new ConstructingObjectParser<>(
+            FUNCTION_CALL_FIELD,
+            true,
+            args -> {
+                var name = (String) args[0];
+
+                @SuppressWarnings("unchecked")
+                var argsMap = (Map<String, String>) args[1];
+                if (argsMap == null) {
+                    return new FunctionCall(name, null);
+                }
+                try {
+                    var builder = XContentFactory.jsonBuilder().map(argsMap);
+                    var json = XContentHelper.convertToJson(BytesReference.bytes(builder), false, XContentType.JSON);
+                    return new FunctionCall(name, json);
+                } catch (IOException e) {
+                    logger.warn("Failed to parse and convert VertexAI function args to json", e);
+                    return new FunctionCall(name, null);
+                }
+            }
+        );
+
+        static {
+            PARSER.declareString(ConstructingObjectParser.constructorArg(), new ParseField(FUNCTION_NAME_FIELD));
+            PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), (p, c) -> p.map(), new ParseField(FUNCTION_ARGS_FIELD));
+        }
+
+        public static FunctionCall parse(XContentParser parser) throws IOException {
+            return PARSER.parse(parser, null);
+        }
+    }
     private record UsageMetadata(int promptTokenCount, int candidatesTokenCount, int totalTokenCount) {}
 
     private static class UsageMetadataParser {
@@ -391,7 +368,6 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         }
     }
 
-    // Helper to wrap a single chunk in a Deque
     private Deque<StreamingUnifiedChatCompletionResults.ChatCompletionChunk> singleItem(
         StreamingUnifiedChatCompletionResults.ChatCompletionChunk result
     ) {
