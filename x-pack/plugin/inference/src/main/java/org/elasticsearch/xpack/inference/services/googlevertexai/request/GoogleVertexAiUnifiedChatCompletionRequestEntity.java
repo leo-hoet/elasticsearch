@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.services.googlevertexai.request;
 
 import org.elasticsearch.ElasticsearchStatusException;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.ToXContentObject;
@@ -30,7 +31,18 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     private static final String TEMPERATURE = "temperature";
     private static final String MAX_OUTPUT_TOKENS = "maxOutputTokens";
     private static final String TOP_P = "topP";
-    // TODO: Add other generationConfig fields if needed (e.g., stopSequences, topK)
+
+    private static final String TOOLS = "tools";
+    private static final String FUNCTION_DECLARATIONS = "functionDeclarations";
+    private static final String FUNCTION_NAME = "name";
+    private static final String FUNCTION_DESCRIPTION = "description";
+    private static final String FUNCTION_PARAMETERS = "parameters";
+    private static final String FUNCTION_TYPE = "function";
+    private static final String TOOL_CONFIG = "toolConfig";
+    private static final String FUNCTION_CALLING_CONFIG = "functionCallingConfig";
+    private static final String TOOL_MODE = "mode";
+    private static final String TOOL_MODE_ANY = "ANY";
+    private static final String ALLOWED_FUNCTION_NAMES = "allowedFunctionNames";
 
     private final UnifiedChatInput unifiedChatInput;
     private final GoogleVertexAiChatCompletionModel model; // TODO: This is not being used?
@@ -110,6 +122,85 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
         builder.endArray();
     }
 
+    private void buildTools(XContentBuilder builder) throws IOException {
+        var request = unifiedChatInput.getRequest();
+
+        var tools = request.tools();
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+
+        builder.startArray(TOOLS);
+        for (var tool : tools) {
+            if (FUNCTION_TYPE.equals(tool.type()) == false) {
+                var errorMessage = format(
+                    "Tool type [%s] not supported by Google VertexAI ChatCompletion. Supported types: [%s]",
+                    tool.type(),
+                    FUNCTION_TYPE
+                );
+                throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+            }
+            var function = tool.function();
+            if (function == null) {
+                var errorMessage = format("Tool of type [%s] must have a function definition", tool.type());
+                throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+            }
+
+            builder.startObject();
+            builder.startArray(FUNCTION_DECLARATIONS);
+            builder.startObject();
+
+            builder.field(FUNCTION_NAME, function.name());
+            if (Strings.hasText(function.description())) {
+                builder.field(FUNCTION_DESCRIPTION, function.description());
+            }
+
+            if (function.parameters() != null && function.parameters().isEmpty() == false) {
+                builder.field(FUNCTION_PARAMETERS, function.parameters());
+            }
+
+            builder.endObject();
+            builder.endArray();
+            builder.endObject();
+        }
+        builder.endArray();
+    }
+
+    private void buildToolConfig(XContentBuilder builder) throws IOException {
+        // Build the "tool_config" object (function calling config)
+        var request = unifiedChatInput.getRequest();
+        UnifiedCompletionRequest.ToolChoiceObject toolChoice = (UnifiedCompletionRequest.ToolChoiceObject) request.toolChoice();
+        if (toolChoice == null) {
+            return;
+        }
+        if (FUNCTION_TYPE.equals(toolChoice.type()) == false) {
+            var errorMessage = format(
+                "Tool choice type [%s] not supported by Google VertexAI ChatCompletion. Supported types: [%s]",
+                toolChoice.type(),
+                FUNCTION_TYPE
+            );
+            throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+        }
+
+        builder.startObject(TOOL_CONFIG);
+        builder.startObject(FUNCTION_CALLING_CONFIG);
+
+        var chosenFunction = toolChoice.function();
+        if (chosenFunction != null) {
+            // If we are using toolChoice we set the API to use the 'ANY', meaning that the model will call this tool
+            // We do that since it's the only supported way right now to make compatible the OpenAi spec with VertexAI spec
+            builder.field(TOOL_MODE, TOOL_MODE_ANY);
+            if (Strings.hasText(chosenFunction.name())) {
+                builder.startArray(ALLOWED_FUNCTION_NAMES);
+                builder.value(chosenFunction.name());
+                builder.endArray();
+            }
+
+            builder.endObject();
+            builder.endObject();
+        }
+    }
+
     private void buildGenerationConfig(XContentBuilder builder) throws IOException {
         var request = unifiedChatInput.getRequest();
 
@@ -146,6 +237,8 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
 
         buildContents(builder);
         buildGenerationConfig(builder);
+        buildTools(builder);
+        buildToolConfig(builder);
 
         builder.endObject();
         return builder;

@@ -7,10 +7,8 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai.request;
 
-import org.apache.commons.lang3.NotImplementedException;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.test.ESTestCase;
@@ -20,15 +18,15 @@ import org.elasticsearch.xcontent.json.JsonXContent;
 import org.elasticsearch.xpack.inference.external.http.sender.UnifiedChatInput;
 import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModelTests;
-import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionServiceSettings;
-import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionTaskSettings;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.Utils.assertJsonEquals;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 
 public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTestCase {
 
@@ -126,6 +124,149 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                         "parts": [ { "text": "Current user query." } ]
                     }
                 ]
+            }
+            """;
+        assertJsonEquals(jsonString, expectedJson);
+    }
+
+    public void testSerialization_Tools() throws IOException {
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    null,
+                    null
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            null,
+            List.of(
+                new UnifiedCompletionRequest.Tool(
+                    "function",
+                    new UnifiedCompletionRequest.Tool.FunctionField(
+                        "Get the current weather in a given location",
+                        "get_current_weather",
+                        Map.of("type", "object", "description", "a description"),
+                        null
+                    )
+                )
+            ),
+            null
+        );
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, false);
+        GoogleVertexAiChatCompletionModel model = createModel();
+
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        String expectedJson = """
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [ { "text": "some text" } ]
+                    }
+                ],
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "get_current_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object",
+                                    "description": "a description"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+        assertJsonEquals(jsonString, expectedJson);
+    }
+
+    public void testSerialization_ToolsChoice() throws IOException {
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    null,
+                    null
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            new UnifiedCompletionRequest.ToolChoiceObject(
+                "function",
+                new UnifiedCompletionRequest.ToolChoiceObject.FunctionField("some function")
+            ),
+            List.of(
+                new UnifiedCompletionRequest.Tool(
+                    "function",
+                    new UnifiedCompletionRequest.Tool.FunctionField(
+                        "Get the current weather in a given location",
+                        "get_current_weather",
+                        Map.of("type", "object", "description", "a description"),
+                        null
+                    )
+                )
+            ),
+            null
+        );
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, false);
+        GoogleVertexAiChatCompletionModel model = createModel();
+
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        String expectedJson = """
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [ { "text": "some text" } ]
+                    }
+                ],
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "get_current_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object",
+                                    "description": "a description"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "toolConfig": {
+                    "functionCallingConfig" : {
+                        "mode": "ANY",
+                        "allowedFunctionNames": [ "some function" ]
+                    }
+                }
             }
             """;
         assertJsonEquals(jsonString, expectedJson);
@@ -348,7 +489,91 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         assertEquals(RestStatus.BAD_REQUEST, statusException.status());
         assertThat(statusException.toString(), containsString("Type [image_url] not supported by Google VertexAI ChatCompletion"));
-
     }
 
+    public void testParseAllFields() throws IOException {
+        String requestJson = """
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": "some text"
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "stopSequences": ["stop"],
+                    "temperature": 0.1,
+                    "maxOutputTokens": 100,
+                    "topP": 0.2
+                },
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "get_current_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    "100",
+                    List.of(
+                        new UnifiedCompletionRequest.ToolCall(
+                            "call_62136354",
+                            new UnifiedCompletionRequest.ToolCall.FunctionField("{'order_id': 'order_12345'}", "get_delivery_date"),
+                            "function"
+                        )
+                    )
+                )
+            ),
+            "gemini-2.0",
+            100L,
+            List.of("stop"),
+            0.1F,
+            new UnifiedCompletionRequest.ToolChoiceObject(
+                "function",
+                new UnifiedCompletionRequest.ToolChoiceObject.FunctionField("some function")
+            ),
+            List.of(
+                new UnifiedCompletionRequest.Tool(
+                    "function",
+                    new UnifiedCompletionRequest.Tool.FunctionField(
+                        "Get the current weather in a given location",
+                        "get_current_weather",
+                        Map.of("type", "object"),
+                        null
+                    )
+                )
+            ),
+            0.2F
+        );
+
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+        var model = createModel();
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        assertJsonEquals(jsonString, requestJson);
+    }
 }
