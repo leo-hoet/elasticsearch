@@ -80,7 +80,6 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
             );
     }
 
-    // TODO: This method was auto generated. Check that it's working properly
     private static Exception buildMidStreamError(Request request, String message, Exception e) {
         var errorResponse = GoogleVertexAiErrorResponse.fromString(message);
         if (errorResponse instanceof GoogleVertexAiErrorResponse gver) {
@@ -142,7 +141,6 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
             ) {
                 return ERROR_PARSER.apply(parser, null).orElse(ErrorResponse.UNDEFINED_ERROR);
             } catch (Exception e) {
-                // Log? For now, swallow and return undefined
                 logger.warn("Failed to parse Google Vertex AI error response body", e);
             }
             return ErrorResponse.UNDEFINED_ERROR;
@@ -155,7 +153,6 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
             ) {
                 return ERROR_PARSER.apply(parser, null).orElse(ErrorResponse.UNDEFINED_ERROR);
             } catch (Exception e) {
-                // Log? For now, swallow and return undefined
                 logger.warn("Failed to parse Google Vertex AI error string", e);
             }
             return ErrorResponse.UNDEFINED_ERROR;
