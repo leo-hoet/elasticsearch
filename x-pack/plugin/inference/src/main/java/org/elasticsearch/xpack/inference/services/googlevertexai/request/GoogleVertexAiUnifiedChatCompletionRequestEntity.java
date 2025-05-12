@@ -53,7 +53,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
 
         var errorMessage =
             format(
-                "Role %s not supported by Google VertexAI ChatCompletion. Supported roles: '%s', '%s'",
+                "Role [%s] not supported by Google VertexAI ChatCompletion. Supported roles: [%s, %s]",
                 messageRole,
                 USER_ROLE,
                 MODEL_ROLE
@@ -67,7 +67,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
         for (var contentObject : contentObjects.contentObjects()) {
             if (contentObject.type().equals(TEXT) == false) {
                 var errorMessage = format(
-                    "Type %s not supported by Google VertexAI ChatCompletion. Supported types: 'text'",
+                    "Type [%s] not supported by Google VertexAI ChatCompletion. Supported types: [text]",
                     contentObject.type()
                 );
                 throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
