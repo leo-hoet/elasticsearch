@@ -498,8 +498,13 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                     {
                         "role": "user",
                         "parts": [
-                            {
-                                "text": "some text"
+                            { "text": "some text" },
+                            { "functionCall" : {
+                                "name": "get_delivery_date",
+                                "args": {
+                                    "order_id" : "order_12345"
+                                    }
+                                }
                             }
                         ]
                     }
@@ -522,7 +527,13 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                             }
                         ]
                     }
-                ]
+                ],
+                "toolConfig": {
+                    "functionCallingConfig" : {
+                        "mode": "ANY",
+                        "allowedFunctionNames": [ "some function" ]
+                    }
+                }
             }
             """;
 
@@ -535,7 +546,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                     List.of(
                         new UnifiedCompletionRequest.ToolCall(
                             "call_62136354",
-                            new UnifiedCompletionRequest.ToolCall.FunctionField("{'order_id': 'order_12345'}", "get_delivery_date"),
+                            new UnifiedCompletionRequest.ToolCall.FunctionField("{\"order_id\": \"order_12345\"}", "get_delivery_date"),
                             "function"
                         )
                     )

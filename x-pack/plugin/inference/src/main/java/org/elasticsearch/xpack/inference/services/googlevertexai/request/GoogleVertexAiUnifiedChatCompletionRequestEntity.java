@@ -9,20 +9,25 @@ package org.elasticsearch.xpack.inference.services.googlevertexai.request;
 
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xcontent.XContentFactory;
+import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.xcontent.XContentParserConfiguration;
+import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.inference.external.http.sender.UnifiedChatInput;
 import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Objects;
 
 import static org.elasticsearch.core.Strings.format;
 
 public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXContentObject {
-    // Field names matching the Google Vertex AI API structure
     private static final String CONTENTS = "contents";
     private static final String ROLE = "role";
     private static final String PARTS = "parts";
@@ -43,6 +48,10 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     private static final String TOOL_MODE = "mode";
     private static final String TOOL_MODE_ANY = "ANY";
     private static final String ALLOWED_FUNCTION_NAMES = "allowedFunctionNames";
+
+    private static final String FUNCTION_CALL = "functionCall";
+    private static final String FUNCTION_CALL_NAME = "name";
+    private static final String FUNCTION_CALL_ARGS = "args";
 
     private final UnifiedChatInput unifiedChatInput;
     private final GoogleVertexAiChatCompletionModel model; // TODO: This is not being used?
@@ -93,6 +102,23 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
 
     }
 
+    private static Map<String, String> jsonStringToMap(String jsonString) throws IOException {
+        if (jsonString == null || jsonString.isEmpty()) {
+            return null;
+        }
+        XContentParserConfiguration parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(
+            LoggingDeprecationHandler.INSTANCE
+        );
+
+        try (XContentParser parser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, jsonString)) {
+            XContentParser.Token token = parser.nextToken();
+            if (token != XContentParser.Token.START_OBJECT) {
+                throw new IOException("Expected JSON object to start with '{', but found " + token);
+            }
+            return parser.mapStrings();
+        }
+    }
+
     private void buildContents(XContentBuilder builder) throws IOException {
         var messages = unifiedChatInput.getRequest().messages();
 
@@ -114,6 +140,18 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                 case null -> {
                     var errorMessage = "Google VertexAI API requires at least one text message but none were provided";
                     throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+                }
+            }
+
+            if (message.toolCalls() != null && message.toolCalls().isEmpty() == false) {
+                var toolCalls = message.toolCalls();
+                for (var toolCall : toolCalls) {
+                    builder.startObject();
+                    builder.startObject(FUNCTION_CALL);
+                    builder.field(FUNCTION_CALL_NAME, toolCall.function().name());
+                    builder.field(FUNCTION_CALL_ARGS, jsonStringToMap(toolCall.function().arguments()));
+                    builder.endObject();
+                    builder.endObject();
                 }
             }
             builder.endArray();
@@ -167,7 +205,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     }
 
     private void buildToolConfig(XContentBuilder builder) throws IOException {
-        // Build the "tool_config" object (function calling config)
         var request = unifiedChatInput.getRequest();
         UnifiedCompletionRequest.ToolChoiceObject toolChoice = (UnifiedCompletionRequest.ToolChoiceObject) request.toolChoice();
         if (toolChoice == null) {
