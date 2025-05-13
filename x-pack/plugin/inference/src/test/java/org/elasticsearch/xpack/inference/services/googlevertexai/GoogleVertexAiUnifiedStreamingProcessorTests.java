@@ -57,13 +57,14 @@ public class GoogleVertexAiUnifiedStreamingProcessorTests extends ESTestCase {
 
             assertEquals("responseId", chunk.id());
             assertEquals(1, chunk.choices().size());
+            assertEquals("chat.completion.chunk", chunk.object());
 
             var choice = chunk.choices().getFirst();
             assertEquals("Elastic", choice.delta().content());
             assertEquals("model", choice.delta().role());
             assertEquals("gemini-2.0-flash-lite", chunk.model());
-            assertEquals("MAXTOKENS", choice.finishReason());
             assertEquals(0, choice.index()); // VertexAI response does not have Index. Use 0 as default
+            assertEquals("MAXTOKENS", choice.finishReason());
 
             assertEquals(1, choice.delta().toolCalls().size());
             var toolCall = choice.delta().toolCalls().getFirst();

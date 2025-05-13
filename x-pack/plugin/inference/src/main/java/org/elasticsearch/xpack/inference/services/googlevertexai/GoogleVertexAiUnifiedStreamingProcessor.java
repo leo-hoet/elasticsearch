@@ -60,6 +60,7 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
     private static final String FUNCTION_NAME_FIELD = "name";
     private static final String FUNCTION_ARGS_FIELD = "args";
 
+    private static final String CHAT_COMPLETION_CHUNK = "chat.completion.chunk";
     private static final String FUNCTION_TYPE = "function";
 
     private final BiFunction<String, Exception, Exception> errorParser;
@@ -206,7 +207,7 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
                         responseId,
                         choices,
                         modelversion,
-                        null,
+                        CHAT_COMPLETION_CHUNK,
                         usageMetadataToChunk(usage)
                     );
                 }
