@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.services.googlevertexai.completion;
 
 import org.elasticsearch.common.settings.SecureString;
+import org.elasticsearch.inference.EmptyTaskSettings;
 import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.test.ESTestCase;
@@ -46,10 +47,8 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
 
         var overriddenModel = GoogleVertexAiChatCompletionModel.of(model, request);
 
-        // Check that the model ID is overridden
         assertThat(overriddenModel.getServiceSettings().modelId(), is("gemini-flash"));
 
-        // Check that other settings remain the same
         assertThat(overriddenModel, not(sameInstance(model)));
         assertThat(overriddenModel.getServiceSettings().projectId(), is(DEFAULT_PROJECT_ID));
         assertThat(overriddenModel.getServiceSettings().location(), is(DEFAULT_LOCATION));
@@ -62,7 +61,7 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
         var model = createCompletionModel(DEFAULT_PROJECT_ID, DEFAULT_LOCATION, DEFAULT_MODEL_ID, DEFAULT_API_KEY, DEFAULT_RATE_LIMIT);
         var request = new UnifiedCompletionRequest(
             List.of(new UnifiedCompletionRequest.Message(new UnifiedCompletionRequest.ContentString("hello"), "user", null, null)),
-            null, // Not overriding model
+            null,
             null,
             null,
             null,
@@ -73,16 +72,14 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
 
         var overriddenModel = GoogleVertexAiChatCompletionModel.of(model, request);
 
-        // Check that the model ID is NOT overridden
         assertThat(overriddenModel.getServiceSettings().modelId(), is(DEFAULT_MODEL_ID));
-        // Check that other settings remain the same
+
         assertThat(overriddenModel.getServiceSettings().projectId(), is(DEFAULT_PROJECT_ID));
         assertThat(overriddenModel.getServiceSettings().location(), is(DEFAULT_LOCATION));
         assertThat(overriddenModel.getServiceSettings().rateLimitSettings(), is(DEFAULT_RATE_LIMIT));
         assertThat(overriddenModel.getSecretSettings().serviceAccountJson(), equalTo(new SecureString(DEFAULT_API_KEY.toCharArray())));
-        assertThat(overriddenModel.getTaskSettings(), is(model.getTaskSettings())); // Task settings shouldn't change
-        // Since nothing changed in service settings, it *could* return the same instance,
-        // but the current implementation always creates a new one. Let's assert it's not the same.
+        assertThat(overriddenModel.getTaskSettings(), is(model.getTaskSettings()));
+
         assertThat(overriddenModel, not(sameInstance(model)));
     }
 
@@ -91,7 +88,8 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
         String projectId = "my-gcp-project";
         String model = "gemini-1.5-flash-001";
         URI expectedUri = new URI(
-            "https://us-east1-aiplatform.googleapis.com/v1/projects/my-gcp-project/locations/global/publishers/google/models/gemini-1.5-flash-001:streamGenerateContent"
+            "https://us-east1-aiplatform.googleapis.com/v1/projects/my-gcp-project"
+                + "/locations/global/publishers/google/models/gemini-1.5-flash-001:streamGenerateContent"
         );
         URI actualUri = GoogleVertexAiChatCompletionModel.buildUri(location, projectId, model);
         assertThat(actualUri, is(expectedUri));
@@ -102,7 +100,8 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
         String projectId = "another-project-123";
         String model = "gemini-pro";
         URI expectedUri = new URI(
-            "https://europe-west2-aiplatform.googleapis.com/v1/projects/another-project-123/locations/global/publishers/google/models/gemini-pro:streamGenerateContent"
+            "https://europe-west2-aiplatform.googleapis.com/v1/projects/another-project-123/"
+                + "locations/global/publishers/google/models/gemini-pro:streamGenerateContent"
         );
         URI actualUri = GoogleVertexAiChatCompletionModel.buildUri(location, projectId, model);
         assertThat(actualUri, is(expectedUri));
@@ -120,7 +119,7 @@ public class GoogleVertexAiChatCompletionModelTests extends ESTestCase {
             TaskType.CHAT_COMPLETION,
             "google_vertex_ai",
             new GoogleVertexAiChatCompletionServiceSettings(projectId, location, modelId, rateLimitSettings),
-            new GoogleVertexAiChatCompletionTaskSettings(),
+            new EmptyTaskSettings(),
             new GoogleVertexAiSecretSettings(new SecureString(apiKey.toCharArray()))
         );
     }

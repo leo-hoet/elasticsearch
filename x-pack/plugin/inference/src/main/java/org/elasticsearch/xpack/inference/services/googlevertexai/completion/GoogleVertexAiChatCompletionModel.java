@@ -9,6 +9,7 @@ package org.elasticsearch.xpack.inference.services.googlevertexai.completion;
 
 import org.apache.http.client.utils.URIBuilder;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.inference.EmptyTaskSettings;
 import org.elasticsearch.inference.ModelConfigurations;
 import org.elasticsearch.inference.ModelSecrets;
 import org.elasticsearch.inference.TaskType;
@@ -44,7 +45,7 @@ public class GoogleVertexAiChatCompletionModel extends GoogleVertexAiModel {
             taskType,
             service,
             GoogleVertexAiChatCompletionServiceSettings.fromMap(serviceSettings, context),
-            GoogleVertexAiChatCompletionTaskSettings.fromMap(taskSettings),
+            new EmptyTaskSettings(),
             GoogleVertexAiSecretSettings.fromMap(secrets)
         );
     }
@@ -54,7 +55,7 @@ public class GoogleVertexAiChatCompletionModel extends GoogleVertexAiModel {
         TaskType taskType,
         String service,
         GoogleVertexAiChatCompletionServiceSettings serviceSettings,
-        GoogleVertexAiChatCompletionTaskSettings taskSettings,
+        EmptyTaskSettings taskSettings,
         @Nullable GoogleVertexAiSecretSettings secrets
     ) {
         super(
@@ -113,8 +114,8 @@ public class GoogleVertexAiChatCompletionModel extends GoogleVertexAiModel {
     }
 
     @Override
-    public GoogleVertexAiChatCompletionTaskSettings getTaskSettings() {
-        return (GoogleVertexAiChatCompletionTaskSettings) super.getTaskSettings();
+    public EmptyTaskSettings getTaskSettings() {
+        return (EmptyTaskSettings) super.getTaskSettings();
     }
 
     @Override
