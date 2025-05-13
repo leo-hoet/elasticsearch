@@ -15,7 +15,6 @@ import java.util.Deque;
 public class JsonArrayPartsEventProcessor extends DelegatingProcessor<HttpResult, Deque<byte[]>> {
     private final JsonArrayPartsEventParser jsonArrayPartsEventParser;
 
-    // TODO: This class is missing unit testing
     public JsonArrayPartsEventProcessor(JsonArrayPartsEventParser jsonArrayPartsEventParser) {
         this.jsonArrayPartsEventParser = jsonArrayPartsEventParser;
     }
@@ -23,14 +22,12 @@ public class JsonArrayPartsEventProcessor extends DelegatingProcessor<HttpResult
     @Override
     public void next(HttpResult item) {
         if (item.isBodyEmpty()) {
-            // discard empty result and go to the next
             upstream().request(1);
             return;
         }
 
         var response = jsonArrayPartsEventParser.parse(item.body());
         if (response.isEmpty()) {
-            // discard empty result and go to the next
             upstream().request(1);
             return;
         }
