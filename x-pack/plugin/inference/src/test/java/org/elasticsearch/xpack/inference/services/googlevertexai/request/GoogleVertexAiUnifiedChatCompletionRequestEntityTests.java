@@ -26,6 +26,7 @@ import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.Utils.assertJsonEquals;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.is;
 
 public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTestCase {
@@ -644,6 +645,92 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         String jsonString = Strings.toString(builder);
         assertJsonEquals(jsonString, requestJson);
+    }
+
+    public void testParseFunctionCallWithEmptyStringContent() throws IOException {
+        String requestJson = """
+            {
+                "contents": [
+                    {
+                        "role": "model",
+                        "parts": [
+                            { "functionCall" : {
+                                "name": "get_delivery_date",
+                                "args": {
+                                    "order_id" : "order_12345"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+
+        var requestContentObject = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    // new UnifiedCompletionRequest.ContentObject("", "text"),
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("", "text"))),
+                    "model",
+                    null,
+                    List.of(
+                        new UnifiedCompletionRequest.ToolCall(
+                            "call_62136354",
+                            new UnifiedCompletionRequest.ToolCall.FunctionField("{\"order_id\": \"order_12345\"}", "get_delivery_date"),
+                            "function"
+                        )
+                    )
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        var requestContentString = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentString(""),
+                    "model",
+                    null,
+                    List.of(
+                        new UnifiedCompletionRequest.ToolCall(
+                            "call_62136354",
+                            new UnifiedCompletionRequest.ToolCall.FunctionField("{\"order_id\": \"order_12345\"}", "get_delivery_date"),
+                            "function"
+                        )
+                    )
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+        var requests = List.of(requestContentObject, requestContentString);
+
+        for (var request : requests) {
+            UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+            var model = createModel();
+            GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+                unifiedChatInput,
+                model
+            );
+
+            XContentBuilder builder = JsonXContent.contentBuilder();
+            entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+            String jsonString = Strings.toString(builder);
+            assertJsonEquals(jsonString, requestJson);
+        }
     }
 
     public void testParseToolChoiceString() throws IOException {

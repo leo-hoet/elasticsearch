@@ -63,7 +63,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
 
     public GoogleVertexAiUnifiedChatCompletionRequestEntity(UnifiedChatInput unifiedChatInput, GoogleVertexAiChatCompletionModel model) {
         this.unifiedChatInput = Objects.requireNonNull(unifiedChatInput);
-        this.model = Objects.requireNonNull(model); // Keep the model reference
+        this.model = Objects.requireNonNull(model);
     }
 
     private String messageRoleToGoogleVertexAiSupportedRole(String messageRole) throws IOException {
@@ -94,6 +94,11 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                 );
                 throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
             }
+
+            if (contentObject.text().isEmpty()) {
+                return; // VertexAI API does not support empty text parts
+            }
+
             // We are only supporting Text messages but VertexAI supports more types:
             // https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Content?_gl=1*q4uxnh*_up*MQ..&gclid=CjwKCAjwwqfABhBcEiwAZJjC3uBQNP9KUMZX8AGXvFXP2rIEQSfCX9RLP5gjzx5r-4xz1daBSxM7GBoCY64QAvD_BwE&gclsrc=aw.ds#Part
             builder.startObject();
@@ -130,6 +135,9 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
             builder.startArray(PARTS);
             switch (message.content()) {
                 case UnifiedCompletionRequest.ContentString contentString -> {
+                    if (contentString.content().isEmpty()) {
+                        break; // VertexAI API does not support empty text parts
+                    }
                     builder.startObject();
                     builder.field(TEXT, contentString.content());
                     builder.endObject();
@@ -297,6 +305,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
         buildToolConfig(builder);
 
         builder.endObject();
+        var s = Strings.toString(builder);
         return builder;
     }
 }
