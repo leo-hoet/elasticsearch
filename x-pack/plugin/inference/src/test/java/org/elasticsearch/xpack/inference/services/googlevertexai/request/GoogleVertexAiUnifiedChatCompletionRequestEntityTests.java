@@ -587,4 +587,228 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         String jsonString = Strings.toString(builder);
         assertJsonEquals(jsonString, requestJson);
     }
+
+    public void testParseFunctionCallNoContent() throws IOException {
+        String requestJson = """
+            {
+                "contents": [
+                    {
+                        "role": "model",
+                        "parts": [
+                            { "functionCall" : {
+                                "name": "get_delivery_date",
+                                "args": {
+                                    "order_id" : "order_12345"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    null,
+                    "model",
+                    "100",
+                    List.of(
+                        new UnifiedCompletionRequest.ToolCall(
+                            "call_62136354",
+                            new UnifiedCompletionRequest.ToolCall.FunctionField("{\"order_id\": \"order_12345\"}", "get_delivery_date"),
+                            "function"
+                        )
+                    )
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+        var model = createModel();
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        assertJsonEquals(jsonString, requestJson);
+    }
+
+    public void testParseToolChoiceString() throws IOException {
+        String requestJson = """
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            { "text": "some text" }
+                        ]
+                    }
+                ]
+            }
+            """;
+
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    null,
+                    null
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            new UnifiedCompletionRequest.ToolChoiceString("auto"),
+            null,
+            null
+        );
+
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+        var model = createModel();
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        assertJsonEquals(jsonString, requestJson);
+    }
+
+    public void testParseToolChoiceInvalid_throwElasticSearchStatusException() throws IOException {
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    null,
+                    null
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            new UnifiedCompletionRequest.ToolChoiceString("unsupported"),
+            null,
+            null
+        );
+
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+        var model = createModel();
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        var statusException = expectThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
+        assertThat(
+            statusException.toString(),
+            containsString("Tool choice value [unsupported] not supported by Google VertexAI ChatCompletion.")
+        );
+
+    }
+
+    public void testParseMultipleTools() throws IOException {
+        String requestJson = """
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            { "text": "some text" }
+                        ]
+                    }
+                ],
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "get_current_weather",
+                                "description": "Get the current weather in a given location",
+                                "parameters": {
+                                    "type": "object"
+                                }
+                            },
+                            {
+                                "name": "get_current_temperature",
+                                "description": "Get the current temperature in a location",
+                                "parameters": {
+                                    "type": "object"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """;
+
+        var request = new UnifiedCompletionRequest(
+            List.of(
+                new UnifiedCompletionRequest.Message(
+                    new UnifiedCompletionRequest.ContentObjects(List.of(new UnifiedCompletionRequest.ContentObject("some text", "text"))),
+                    "user",
+                    null,
+                    null
+                )
+            ),
+            "gemini-2.0",
+            null,
+            null,
+            null,
+            null,
+            List.of(
+                new UnifiedCompletionRequest.Tool(
+                    "function",
+                    new UnifiedCompletionRequest.Tool.FunctionField(
+                        "Get the current weather in a given location",
+                        "get_current_weather",
+                        Map.of("type", "object"),
+                        null
+                    )
+                ),
+                new UnifiedCompletionRequest.Tool(
+                    "function",
+                    new UnifiedCompletionRequest.Tool.FunctionField(
+                        "Get the current temperature in a location",
+                        "get_current_temperature",
+                        Map.of("type", "object"),
+                        null
+                    )
+                )
+            ),
+            null
+        );
+
+        UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
+        var model = createModel();
+        GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(
+            unifiedChatInput,
+            model
+        );
+
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        entity.toXContent(builder, ToXContent.EMPTY_PARAMS);
+
+        String jsonString = Strings.toString(builder);
+        assertJsonEquals(jsonString, requestJson);
+    }
 }

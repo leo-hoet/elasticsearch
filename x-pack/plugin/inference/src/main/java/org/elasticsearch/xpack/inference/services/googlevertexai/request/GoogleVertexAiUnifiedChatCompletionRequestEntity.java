@@ -47,6 +47,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     private static final String FUNCTION_CALLING_CONFIG = "functionCallingConfig";
     private static final String TOOL_MODE = "mode";
     private static final String TOOL_MODE_ANY = "ANY";
+    private static final String TOOL_MODE_AUTO = "auto";
     private static final String ALLOWED_FUNCTION_NAMES = "allowedFunctionNames";
 
     private static final String FUNCTION_CALL = "functionCall";
@@ -138,8 +139,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                     contentObjects
                 );
                 case null -> {
-                    var errorMessage = "Google VertexAI API requires at least one text message but none were provided";
-                    throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
+                    // Content can be null and that's fine. If this case is not present, Null pointer exception will be thrown
                 }
             }
 
@@ -169,6 +169,8 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
         }
 
         builder.startArray(TOOLS);
+        builder.startObject();
+        builder.startArray(FUNCTION_DECLARATIONS);
         for (var tool : tools) {
             if (FUNCTION_TYPE.equals(tool.type()) == false) {
                 var errorMessage = format(
@@ -184,10 +186,8 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                 throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
             }
 
-            builder.startObject();
-            builder.startArray(FUNCTION_DECLARATIONS);
-            builder.startObject();
 
+            builder.startObject();
             builder.field(FUNCTION_NAME, function.name());
             if (Strings.hasText(function.description())) {
                 builder.field(FUNCTION_DESCRIPTION, function.description());
@@ -198,17 +198,36 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
             }
 
             builder.endObject();
-            builder.endArray();
-            builder.endObject();
         }
+        builder.endArray();
+        builder.endObject();
         builder.endArray();
     }
 
     private void buildToolConfig(XContentBuilder builder) throws IOException {
         var request = unifiedChatInput.getRequest();
-        UnifiedCompletionRequest.ToolChoiceObject toolChoice = (UnifiedCompletionRequest.ToolChoiceObject) request.toolChoice();
-        if (toolChoice == null) {
-            return;
+
+        UnifiedCompletionRequest.ToolChoiceObject toolChoice;
+        switch (request.toolChoice()) {
+            case UnifiedCompletionRequest.ToolChoiceObject toolChoiceObject -> {
+                toolChoice = toolChoiceObject;
+            }
+            case UnifiedCompletionRequest.ToolChoiceString toolChoiceString -> {
+                if (toolChoiceString.value().equals(TOOL_MODE_AUTO)) {
+                    return;
+                }
+                throw new ElasticsearchStatusException(
+                    format(
+                        "Tool choice value [%s] not supported by Google VertexAI ChatCompletion. Supported values: [%s]",
+                        toolChoiceString.value(),
+                        TOOL_MODE_AUTO
+                    ),
+                    RestStatus.BAD_REQUEST
+                );
+            }
+            case null -> {
+                return;
+            }
         }
         if (FUNCTION_TYPE.equals(toolChoice.type()) == false) {
             var errorMessage = format(
