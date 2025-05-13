@@ -38,8 +38,6 @@ public class GoogleVertexAiChatCompletionServiceSettings extends FilteredXConten
 
     public static final String NAME = "google_vertex_ai_chatcompletion_service_settings";
 
-    // TODO: Other fields can be missing here. Mostly the ones the ones that are described here
-    // https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/streamGenerateContent?_gl=1*15nhtzk*_up*MQ..&gclid=CjwKCAjwwqfABhBcEiwAZJjC3uBQNP9KUMZX8AGXvFXP2rIEQSfCX9RLP5gjzx5r-4xz1daBSxM7GBoCY64QAvD_BwE&gclsrc=aw.ds
     private final String location;
     private final String modelId;
     private final String projectId;
@@ -47,8 +45,7 @@ public class GoogleVertexAiChatCompletionServiceSettings extends FilteredXConten
     private final RateLimitSettings rateLimitSettings;
 
     // https://cloud.google.com/vertex-ai/docs/quotas#eval-quotas
-    // TODO: this may be wrong. Double check before submitting the PR)
-    private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(2000);
+    private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(1000);
 
     @Override
     protected XContentBuilder toXContentFragmentOfExposedFields(XContentBuilder builder, ToXContent.Params params) throws IOException {
