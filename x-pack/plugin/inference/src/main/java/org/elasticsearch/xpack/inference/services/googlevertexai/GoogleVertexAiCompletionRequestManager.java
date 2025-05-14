@@ -39,7 +39,7 @@ public class GoogleVertexAiCompletionRequestManager extends GoogleVertexAiReques
 
     private final GoogleVertexAiChatCompletionModel model;
 
-    private GoogleVertexAiCompletionRequestManager(GoogleVertexAiChatCompletionModel model, ThreadPool threadPool) {
+    public GoogleVertexAiCompletionRequestManager(GoogleVertexAiChatCompletionModel model, ThreadPool threadPool) {
         super(threadPool, model, RateLimitGrouping.of(model));
         this.model = model;
     }
