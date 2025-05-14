@@ -196,7 +196,6 @@ public class GoogleVertexAiService extends SenderService {
         return supportedTaskTypes;
     }
 
-    // TODO: Since we added a task type we need to change this?
     @Override
     public TransportVersion getMinimalSupportedVersion() {
         return TransportVersions.V_8_15_0;
