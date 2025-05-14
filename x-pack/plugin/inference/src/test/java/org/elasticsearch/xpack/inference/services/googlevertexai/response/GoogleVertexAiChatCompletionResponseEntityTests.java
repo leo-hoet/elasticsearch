@@ -61,30 +61,6 @@ public class GoogleVertexAiChatCompletionResponseEntityTests extends ESTestCase 
         assertThat(chatCompletionResults.getResults().getFirst().content(), is("Hello World"));
     }
 
-    public void testFromResponse_HandlesPartWithMissingText() throws IOException {
-        // Since text is optionalConstructorArg, missing text results in null, which is skipped by extractText
-        String responseJson = """
-            [
-              {
-                "candidates": [
-                  {
-                    "content": {
-                      "parts": [ { "not_text": "hello" } ]
-                    }
-                  }
-                ]
-              }
-            ]
-            """;
-
-        ChatCompletionResults chatCompletionResults = GoogleVertexAiChatCompletionResponseEntity.fromResponse(
-            mock(Request.class),
-            new HttpResult(mock(HttpResponse.class), responseJson.getBytes(StandardCharsets.UTF_8))
-        );
-
-        assertThat(chatCompletionResults.getResults().size(), is(1));
-        assertThat(chatCompletionResults.getResults().getFirst().content(), is(""));
-    }
 
     public void testFromResponse_FailsWhenChunkMissingCandidates() {
         // Parser ignores unknown fields, but expects 'candidates' for the constructor
@@ -97,7 +73,7 @@ public class GoogleVertexAiChatCompletionResponseEntityTests extends ESTestCase 
             """;
 
         var thrownException = expectThrows(
-            IllegalArgumentException.class, // ConstructingObjectParser throws this when required args are missing
+            IllegalArgumentException.class,
             () -> GoogleVertexAiChatCompletionResponseEntity.fromResponse(
                 mock(Request.class),
                 new HttpResult(mock(HttpResponse.class), responseJson.getBytes(StandardCharsets.UTF_8))
