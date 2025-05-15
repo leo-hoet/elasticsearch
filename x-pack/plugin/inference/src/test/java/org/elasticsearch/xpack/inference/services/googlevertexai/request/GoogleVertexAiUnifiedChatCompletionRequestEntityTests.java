@@ -92,7 +92,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         var unifiedRequest = UnifiedCompletionRequest.of(messages);
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(unifiedRequest, false);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -150,7 +149,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
             null
         );
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, false);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -217,7 +215,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
             null
         );
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, false);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -274,7 +271,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         );
 
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(completionRequestWithGenerationConfig, true);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -320,7 +316,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         );
 
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(completionRequestWithGenerationConfig, true);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -356,7 +351,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         var unifiedRequest = UnifiedCompletionRequest.of(List.of(message));
 
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(unifiedRequest, true);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -393,7 +387,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         var unifiedRequest = UnifiedCompletionRequest.of(messageList);
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(unifiedRequest, true);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -427,7 +420,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         );
         var unifiedRequest = UnifiedCompletionRequest.of(List.of(message));
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(unifiedRequest, false);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
@@ -450,7 +442,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         );
         var unifiedRequest = UnifiedCompletionRequest.of(List.of(message));
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(unifiedRequest, false);
-        GoogleVertexAiChatCompletionModel model = createModel();
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
