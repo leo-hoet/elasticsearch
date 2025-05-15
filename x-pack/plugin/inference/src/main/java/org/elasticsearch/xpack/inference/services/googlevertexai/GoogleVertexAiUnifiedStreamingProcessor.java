@@ -31,6 +31,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.BiFunction;
 
@@ -343,11 +344,16 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
         private static final ConstructingObjectParser<UsageMetadata, Void> PARSER = new ConstructingObjectParser<>(
             USAGE_METADATA_FIELD,
             true,
-            args -> new UsageMetadata(
-                args[0] == null ? 0 : (int) args[0],
-                args[1] == null ? 0 : (int) args[1],
-                args[2] == null ? 0 : (int) args[2]
-            )
+            args -> {
+                if (Objects.isNull(args[0]) && Objects.isNull(args[1]) && Objects.isNull(args[2])) {
+                    return null;
+                }
+                return new UsageMetadata(
+                    args[0] == null ? 0 : (int) args[0],
+                    args[1] == null ? 0 : (int) args[1],
+                    args[2] == null ? 0 : (int) args[2]
+                );
+            }
         );
 
         static {

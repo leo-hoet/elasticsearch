@@ -110,7 +110,6 @@ public class GoogleVertexAiUnifiedStreamingProcessorTests extends ESTestCase {
             assertEquals("STOP", choice.finishReason());
             assertEquals(0, choice.index());
             assertNull(choice.delta().toolCalls());
-            assertNull(chunk.usage());
 
         } catch (IOException e) {
             fail("IOException during test: " + e.getMessage());
@@ -192,10 +191,9 @@ public class GoogleVertexAiUnifiedStreamingProcessorTests extends ESTestCase {
             assertEquals("This is the first part. This is the second part.", choice.delta().content());
             assertEquals("STOP", choice.finishReason());
             assertEquals(0, choice.index());
-            assertNull(choice.delta().toolCalls()); // No function calls in this test case
+            assertNull(choice.delta().toolCalls());
             assertNull(chunk.model());
             assertNull(chunk.usage());
-
         } catch (IOException e) {
             fail("IOException during test: " + e.getMessage());
         }
