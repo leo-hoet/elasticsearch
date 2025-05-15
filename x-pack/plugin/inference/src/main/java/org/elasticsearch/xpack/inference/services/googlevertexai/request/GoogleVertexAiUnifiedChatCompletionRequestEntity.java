@@ -52,6 +52,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     private static final String FUNCTION_CALL = "functionCall";
     private static final String FUNCTION_CALL_NAME = "name";
     private static final String FUNCTION_CALL_ARGS = "args";
+    private static final String FUNCTION_CALL_ID = "id";
 
     private final UnifiedChatInput unifiedChatInput;
 
@@ -152,6 +153,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                     builder.startObject();
                     builder.startObject(FUNCTION_CALL);
                     builder.field(FUNCTION_CALL_NAME, toolCall.function().name());
+                    builder.field(FUNCTION_CALL_ID, toolCall.id());
                     builder.field(FUNCTION_CALL_ARGS, jsonStringToMap(toolCall.function().arguments()));
                     builder.endObject();
                     builder.endObject();

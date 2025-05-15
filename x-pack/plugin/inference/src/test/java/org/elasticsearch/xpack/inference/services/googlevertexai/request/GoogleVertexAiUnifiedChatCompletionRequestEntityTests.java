@@ -609,6 +609,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                         "role": "model",
                         "parts": [
                             { "functionCall" : {
+                                "id" : "call_62136354",
                                 "name": "get_delivery_date",
                                 "args": {
                                     "order_id" : "order_12345"
