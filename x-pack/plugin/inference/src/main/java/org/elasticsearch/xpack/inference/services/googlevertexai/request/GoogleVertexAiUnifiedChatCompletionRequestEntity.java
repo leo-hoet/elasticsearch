@@ -19,7 +19,6 @@ import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
 import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.inference.external.http.sender.UnifiedChatInput;
-import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
 
 import java.io.IOException;
 import java.util.Map;
@@ -55,18 +54,16 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
     private static final String FUNCTION_CALL_ARGS = "args";
 
     private final UnifiedChatInput unifiedChatInput;
-    private final GoogleVertexAiChatCompletionModel model; // TODO: This is not being used?
 
     private static final String USER_ROLE = "user";
     private static final String MODEL_ROLE = "model";
     private static final String STOP_SEQUENCES = "stopSequences";
 
-    public GoogleVertexAiUnifiedChatCompletionRequestEntity(UnifiedChatInput unifiedChatInput, GoogleVertexAiChatCompletionModel model) {
+    public GoogleVertexAiUnifiedChatCompletionRequestEntity(UnifiedChatInput unifiedChatInput) {
         this.unifiedChatInput = Objects.requireNonNull(unifiedChatInput);
-        this.model = Objects.requireNonNull(model);
     }
 
-    private String messageRoleToGoogleVertexAiSupportedRole(String messageRole) throws IOException {
+    private String messageRoleToGoogleVertexAiSupportedRole(String messageRole) {
         var messageRoleLowered = messageRole.toLowerCase();
 
         if (messageRoleLowered.equals(USER_ROLE) || messageRoleLowered.equals(MODEL_ROLE)) {
@@ -98,8 +95,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                 return; // VertexAI API does not support empty text parts
             }
 
-            // We are only supporting Text messages but VertexAI supports more types:
-            // https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Content?_gl=1*q4uxnh*_up*MQ..&gclid=CjwKCAjwwqfABhBcEiwAZJjC3uBQNP9KUMZX8AGXvFXP2rIEQSfCX9RLP5gjzx5r-4xz1daBSxM7GBoCY64QAvD_BwE&gclsrc=aw.ds#Part
+            // We are only supporting Text messages for now
             builder.startObject();
             builder.field(TEXT, contentObject.text());
             builder.endObject();
@@ -215,9 +211,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
 
         UnifiedCompletionRequest.ToolChoiceObject toolChoice;
         switch (request.toolChoice()) {
-            case UnifiedCompletionRequest.ToolChoiceObject toolChoiceObject -> {
-                toolChoice = toolChoiceObject;
-            }
+            case UnifiedCompletionRequest.ToolChoiceObject toolChoiceObject -> toolChoice = toolChoiceObject;
             case UnifiedCompletionRequest.ToolChoiceString toolChoiceString -> {
                 if (toolChoiceString.value().equals(TOOL_MODE_AUTO)) {
                     return;
@@ -303,7 +297,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
         buildToolConfig(builder);
 
         builder.endObject();
-        var s = Strings.toString(builder);
         return builder;
     }
 }

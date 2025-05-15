@@ -35,7 +35,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequest implements GoogleVertexA
     public HttpRequest createHttpRequest() {
         HttpPost httpPost = new HttpPost(model.uri());
 
-        var requestEntity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput, model);
+        var requestEntity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
         ByteArrayEntity byteEntity = new ByteArrayEntity(Strings.toString(requestEntity).getBytes(StandardCharsets.UTF_8));
         httpPost.setEntity(byteEntity);
