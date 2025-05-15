@@ -23,9 +23,9 @@ import org.elasticsearch.xpack.inference.services.googlevertexai.action.GoogleVe
 import org.elasticsearch.xpack.inference.services.googlevertexai.request.GoogleVertexAiUtils;
 import org.elasticsearch.xpack.inference.services.googlevertexai.rerank.GoogleDiscoveryEngineRateLimitServiceSettings;
 
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
-import java.net.URI;
 import java.util.Objects;
 
 import static org.elasticsearch.core.Strings.format;
@@ -88,14 +88,6 @@ public class GoogleVertexAiChatCompletionModel extends GoogleVertexAiModel {
             model.getTaskSettings(),
             model.getSecretSettings()
         );
-    }
-
-    public GoogleVertexAiChatCompletionModel(
-        ModelConfigurations configurations,
-        ModelSecrets secrets,
-        GoogleVertexAiRateLimitServiceSettings rateLimitServiceSettings
-    ) {
-        super(configurations, secrets, rateLimitServiceSettings);
     }
 
     @Override

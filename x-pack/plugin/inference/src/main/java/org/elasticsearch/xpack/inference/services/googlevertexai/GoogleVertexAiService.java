@@ -75,7 +75,6 @@ public class GoogleVertexAiService extends SenderService {
         TaskType.CHAT_COMPLETION
     );
 
-
     public static final EnumSet<InputType> VALID_INPUT_TYPE_VALUES = EnumSet.of(
         InputType.INGEST,
         InputType.SEARCH,

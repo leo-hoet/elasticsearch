@@ -125,9 +125,7 @@ public class GoogleVertexAiSecretSettings implements SecretSettings {
                 configurationMap.put(
                     SERVICE_ACCOUNT_JSON,
                     new SettingsConfiguration.Builder(EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK, TaskType.CHAT_COMPLETION))
-                        .setDescription(
-                        "API Key for the provider you're connecting to."
-                    )
+                        .setDescription("API Key for the provider you're connecting to.")
                         .setLabel("Credentials JSON")
                         .setRequired(true)
                         .setSensitive(true)

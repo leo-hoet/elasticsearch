@@ -73,13 +73,12 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
             return messageRoleLowered;
         }
 
-        var errorMessage =
-            format(
-                "Role [%s] not supported by Google VertexAI ChatCompletion. Supported roles: [%s, %s]",
-                messageRole,
-                USER_ROLE,
-                MODEL_ROLE
-            );
+        var errorMessage = format(
+            "Role [%s] not supported by Google VertexAI ChatCompletion. Supported roles: [%s, %s]",
+            messageRole,
+            USER_ROLE,
+            MODEL_ROLE
+        );
         throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
     }
 
@@ -193,7 +192,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntity implements ToXCont
                 var errorMessage = format("Tool of type [%s] must have a function definition", tool.type());
                 throw new ElasticsearchStatusException(errorMessage, RestStatus.BAD_REQUEST);
             }
-
 
             builder.startObject();
             builder.field(FUNCTION_NAME, function.name());

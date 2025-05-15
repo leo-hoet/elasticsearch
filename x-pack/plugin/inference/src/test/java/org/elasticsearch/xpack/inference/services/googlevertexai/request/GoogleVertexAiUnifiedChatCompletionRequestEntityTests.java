@@ -26,8 +26,6 @@ import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.Utils.assertJsonEquals;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.endsWith;
-import static org.hamcrest.Matchers.is;
 
 public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTestCase {
 

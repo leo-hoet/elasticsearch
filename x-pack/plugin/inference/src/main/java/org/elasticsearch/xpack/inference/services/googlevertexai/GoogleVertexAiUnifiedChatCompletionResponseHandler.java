@@ -7,10 +7,10 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai;
 
-import org.elasticsearch.logging.LogManager;
-import org.elasticsearch.logging.Logger;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.inference.InferenceServiceResults;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;

@@ -21,9 +21,9 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
+import static org.elasticsearch.common.xcontent.XContentParserUtils.ensureExpectedToken;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
-import static org.elasticsearch.common.xcontent.XContentParserUtils.ensureExpectedToken;
 
 public class GoogleVertexAiChatCompletionResponseEntity {
 

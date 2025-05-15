@@ -103,7 +103,6 @@ public class JsonArrayPartsEventParserTests extends ESTestCase {
         assertTrue("Expected no more parts from empty call", parser.parse(new byte[0]).isEmpty());
     }
 
-
     public void testParse_nestedObjects_extractsTopLevelObject() {
         JsonArrayPartsEventParser parser = new JsonArrayPartsEventParser();
         String json = "{\"outer_key\":{\"inner_key\":\"value\"},\"another_key\":\"val\"}";

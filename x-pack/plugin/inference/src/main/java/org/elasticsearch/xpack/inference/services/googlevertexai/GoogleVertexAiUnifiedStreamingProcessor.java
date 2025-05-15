@@ -185,33 +185,28 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
 
             return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice(delta, candidate.finishReason(), candidate.index());
         }
+
         @SuppressWarnings("unchecked")
         private static final ConstructingObjectParser<StreamingUnifiedChatCompletionResults.ChatCompletionChunk, Void> PARSER =
-            new ConstructingObjectParser<>(
-                "google_vertexai_chat_completion_chunk",
-                true,
-                args -> {
-                    List<Candidate> candidates = (List<Candidate>) args[0];
-                    UsageMetadata usage = (UsageMetadata) args[1];
-                    String modelversion = (String) args[2];
-                    String responseId = (String) args[3];
+            new ConstructingObjectParser<>("google_vertexai_chat_completion_chunk", true, args -> {
+                List<Candidate> candidates = (List<Candidate>) args[0];
+                UsageMetadata usage = (UsageMetadata) args[1];
+                String modelversion = (String) args[2];
+                String responseId = (String) args[3];
 
+                boolean candidatesIsEmpty = candidates == null || candidates.isEmpty();
+                List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice> choices = candidatesIsEmpty
+                    ? Collections.emptyList()
+                    : candidates.stream().map(GoogleVertexAiChatCompletionChunkParser::candidateToChoice).toList();
 
-                    boolean candidatesIsEmpty = candidates == null || candidates.isEmpty();
-                    List<StreamingUnifiedChatCompletionResults.ChatCompletionChunk.Choice> choices = candidatesIsEmpty
-                        ? Collections.emptyList()
-                        : candidates.stream().map(GoogleVertexAiChatCompletionChunkParser::candidateToChoice).toList();
-
-
-                    return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk(
-                        responseId,
-                        choices,
-                        modelversion,
-                        CHAT_COMPLETION_CHUNK,
-                        usageMetadataToChunk(usage)
-                    );
-                }
-            );
+                return new StreamingUnifiedChatCompletionResults.ChatCompletionChunk(
+                    responseId,
+                    choices,
+                    modelversion,
+                    CHAT_COMPLETION_CHUNK,
+                    usageMetadataToChunk(usage)
+                );
+            });
 
         static {
             PARSER.declareObjectArray(
@@ -238,16 +233,12 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
     private record Candidate(Content content, String finishReason, int index) {}
 
     private static class CandidateParser {
-        private static final ConstructingObjectParser<Candidate, Void> PARSER = new ConstructingObjectParser<>(
-            "candidate",
-            true,
-            args -> {
-                var content = (Content) args[0];
-                var finishReason = (String) args[1];
-                var index = args[2] == null ? 0 : (int) args[2];
-                return new Candidate(content, finishReason, index);
-            }
-        );
+        private static final ConstructingObjectParser<Candidate, Void> PARSER = new ConstructingObjectParser<>("candidate", true, args -> {
+            var content = (Content) args[0];
+            var finishReason = (String) args[1];
+            var index = args[2] == null ? 0 : (int) args[2];
+            return new Candidate(content, finishReason, index);
+        });
 
         static {
             PARSER.declareObject(
@@ -345,6 +336,7 @@ public class GoogleVertexAiUnifiedStreamingProcessor extends DelegatingProcessor
             return PARSER.parse(parser, null);
         }
     }
+
     private record UsageMetadata(int promptTokenCount, int candidatesTokenCount, int totalTokenCount) {}
 
     private static class UsageMetadataParser {

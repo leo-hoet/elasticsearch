@@ -32,7 +32,6 @@ public class GoogleVertexAiUnifiedChatCompletionRequestTests extends ESTestCase 
 
     private static final String AUTH_HEADER_VALUE = "Bearer foo";
 
-
     public void testCreateRequest_Default() throws IOException {
         var modelId = "gemini-pro";
         var projectId = "test-project";

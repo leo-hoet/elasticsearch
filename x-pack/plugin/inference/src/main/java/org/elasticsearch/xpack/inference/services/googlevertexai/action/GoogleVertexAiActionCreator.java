@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai.action;
 
-import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.external.action.ExecutableAction;
 import org.elasticsearch.xpack.inference.external.action.SenderExecutableAction;
 import org.elasticsearch.xpack.inference.external.http.sender.Sender;

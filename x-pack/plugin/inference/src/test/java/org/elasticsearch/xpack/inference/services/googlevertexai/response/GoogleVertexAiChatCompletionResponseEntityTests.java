@@ -61,7 +61,6 @@ public class GoogleVertexAiChatCompletionResponseEntityTests extends ESTestCase 
         assertThat(chatCompletionResults.getResults().getFirst().content(), is("Hello World"));
     }
 
-
     public void testFromResponse_FailsWhenChunkMissingCandidates() {
         // Parser ignores unknown fields, but expects 'candidates' for the constructor
         String responseJson = """

@@ -6,8 +6,10 @@
  */
 
 package org.elasticsearch.xpack.inference.services.googlevertexai;
+
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.support.PlainActionFuture;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.settings.Settings;
@@ -48,7 +50,6 @@ import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
-import org.elasticsearch.action.support.PlainActionFuture;
 
 import java.io.IOException;
 import java.util.HashMap;
