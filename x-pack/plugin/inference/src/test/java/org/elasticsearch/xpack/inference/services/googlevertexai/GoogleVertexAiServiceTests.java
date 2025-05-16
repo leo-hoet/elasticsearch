@@ -38,7 +38,8 @@ import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSenderT
 import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
 import org.elasticsearch.xpack.inference.services.InferenceEventsAssertion;
 import org.elasticsearch.xpack.inference.services.ServiceFields;
-import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModelTests;
+import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
+import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionServiceSettings;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModelTests;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsServiceSettings;
@@ -57,13 +58,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.elasticsearch.common.xcontent.XContentHelper.toXContent;
+import static org.elasticsearch.inference.TaskType.CHAT_COMPLETION;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertToXContentEquivalent;
 import static org.elasticsearch.xpack.inference.Utils.getPersistedConfigMap;
 import static org.elasticsearch.xpack.inference.Utils.inferenceUtilityPool;
 import static org.elasticsearch.xpack.inference.Utils.mockClusterServiceEmpty;
 import static org.elasticsearch.xpack.inference.chunking.ChunkingSettingsTests.createRandomChunkingSettingsMap;
 import static org.elasticsearch.xpack.inference.services.ServiceComponentsTests.createWithEmptySettings;
+import static org.elasticsearch.xpack.inference.services.cohere.embeddings.CohereEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.Mockito.mock;
@@ -90,54 +95,51 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
         webServer.close();
     }
 
-    public void testUnifiedCompletionInfer_HappyPath() throws Exception {
-        // 1. Mock response (array of chunks)
-        String responseJson = """
-            [
-              {
-                "candidates": [
-                  { "content": { "role": "model", "parts": [ { "text": "This is " } ] } }
-                ]
-              },
-              {
-                "candidates": [
-                  { "content": { "role": "model", "parts": [ { "text": "a test response." } ] } }
-                ],
-                "usageMetadata": { "promptTokenCount": 5, "candidatesTokenCount": 4, "totalTokenCount": 9 }
-              }
-            ]
+    public void testParseRequestConfig_CreateGoogleVertexAiChatCompletionModel() throws IOException {
+        var projectId = "project";
+        var location = "location";
+        var modelId = "model";
+        var serviceAccountJson = """
+            {
+                "some json"
+            }
             """;
-        webServer.enqueue(new MockResponse().setResponseCode(200).setBody(responseJson));
 
-        // 2. Setup service and sender factory
-        var senderFactory = HttpRequestSenderTests.createSenderFactory(threadPool, clientManager);
-        try (var service = new GoogleVertexAiService(senderFactory, createWithEmptySettings(threadPool))) {
+        try (var service = createGoogleVertexAiService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                assertThat(model, instanceOf(GoogleVertexAiChatCompletionModel.class));
 
-            // 3. Create model and input
-            // Use a dummy JSON string for serviceAccountJson in tests
-            String dummyServiceAccountJson =
-                "{\"type\":\"service_account\", \"client_id\": \"1\", \"client_email\": \"test@demo.com\", \"private_key\":\"-----BEGIN PRIVATE KEY-----\\nprivate__key\\n-----END PRIVATE KEY-----\\n\n\", \"private_key_id\":\"1\"}";
+                var vertexAIModel = (GoogleVertexAiChatCompletionModel) model;
 
-            var model = GoogleVertexAiChatCompletionModelTests.createCompletionModel(
-                "test-project",
-                "us-central1",
-                "gemini-pro",
-                dummyServiceAccountJson, // Pass dummy JSON
-                null // No specific rate limit settings needed for this test
+                assertThat(vertexAIModel.getServiceSettings().modelId(), is(modelId));
+                assertThat(vertexAIModel.getServiceSettings().location(), is(location));
+                assertThat(vertexAIModel.getServiceSettings().projectId(), is(projectId));
+                assertThat(vertexAIModel.getSecretSettings().serviceAccountJson().toString(), is(serviceAccountJson));
+                assertThat(vertexAIModel.getConfigurations().getTaskType(), equalTo(CHAT_COMPLETION));
+                assertThat(vertexAIModel.getServiceSettings().rateLimitSettings().requestsPerTimeUnit(), equalTo(1000L));
+                assertThat(vertexAIModel.getServiceSettings().rateLimitSettings().timeUnit(), equalTo(MINUTES));
+
+            }, e -> fail("Model parsing should succeeded, but failed: " + e.getMessage()));
+
+            service.parseRequestConfig(
+                "id",
+                TaskType.CHAT_COMPLETION,
+                getRequestConfigMap(
+                    new HashMap<>(
+                        Map.of(
+                            ServiceFields.MODEL_ID,
+                            modelId,
+                            GoogleVertexAiServiceFields.LOCATION,
+                            location,
+                            GoogleVertexAiServiceFields.PROJECT_ID,
+                            projectId
+                        )
+                    ),
+                    getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(serviceAccountJson)
+                ),
+                modelListener
             );
-
-            var input = UnifiedCompletionRequest.of(
-                List.of(new UnifiedCompletionRequest.Message(new UnifiedCompletionRequest.ContentString("Say test"), "user", null, null))
-            );
-            // 4. Call method
-            PlainActionFuture<InferenceServiceResults> listener = new PlainActionFuture<>();
-            service.unifiedCompletionInfer(model, input, InferenceAction.Request.DEFAULT_TIMEOUT, listener);
-
-            // 5. Assertions
-            var result = listener.actionGet(TIMEOUT);
-            InferenceEventsAssertion.assertThat(result).hasFinishedStream().hasNoErrors();
-            // TODO: Rename and complete this test. Right now it does not work bc the request requires a valid PCK#8 key. Mock it? Inject
-            // it?
         }
     }
 
@@ -487,6 +489,53 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
             assertThat(embeddingsModel.getServiceSettings().dimensionsSetByUser(), is(Boolean.TRUE));
             assertThat(embeddingsModel.getTaskSettings(), is(new GoogleVertexAiEmbeddingsTaskSettings(autoTruncate, InputType.SEARCH)));
             assertThat(embeddingsModel.getSecretSettings().serviceAccountJson().toString(), is(serviceAccountJson));
+        }
+    }
+
+    public void testParsePersistedConfigWithSecrets_CreatesGoogleVertexAiChatCompletionModel() throws IOException {
+        var projectId = "project";
+        var location = "location";
+        var modelId = "model";
+        var autoTruncate = true;
+        var serviceAccountJson = """
+            {
+                "some json"
+            }
+            """;
+
+        try (var service = createGoogleVertexAiService()) {
+            var persistedConfig = getPersistedConfigMap(
+                new HashMap<>(
+                    Map.of(
+                        ServiceFields.MODEL_ID,
+                        modelId,
+                        GoogleVertexAiServiceFields.LOCATION,
+                        location,
+                        GoogleVertexAiServiceFields.PROJECT_ID,
+                        projectId
+                    )
+                ),
+                getTaskSettingsMap(autoTruncate, InputType.INGEST),
+                getSecretSettingsMap(serviceAccountJson)
+            );
+
+            var model = service.parsePersistedConfigWithSecrets(
+                "id",
+                TaskType.CHAT_COMPLETION,
+                persistedConfig.config(),
+                persistedConfig.secrets()
+            );
+
+            assertThat(model, instanceOf(GoogleVertexAiChatCompletionModel.class));
+
+            var chatCompletionModel = (GoogleVertexAiChatCompletionModel) model;
+            assertThat(chatCompletionModel.getServiceSettings().modelId(), is(modelId));
+            assertThat(chatCompletionModel.getServiceSettings().location(), is(location));
+            assertThat(chatCompletionModel.getServiceSettings().projectId(), is(projectId));
+            assertThat(chatCompletionModel.getSecretSettings().serviceAccountJson().toString(), is(serviceAccountJson));
+            assertThat(chatCompletionModel.getConfigurations().getTaskType(), equalTo(CHAT_COMPLETION));
+            assertThat(chatCompletionModel.getServiceSettings().rateLimitSettings().requestsPerTimeUnit(), equalTo(1000L));
+            assertThat(chatCompletionModel.getServiceSettings().rateLimitSettings().timeUnit(), equalTo(MINUTES));
         }
     }
 
@@ -961,7 +1010,7 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
                                    "sensitive": false,
                                    "updatable": false,
                                    "type": "str",
-                                   "supported_task_types": ["text_embedding", "chat_completion"]
+                                   "supported_task_types": ["text_embedding", "rerank", "chat_completion"]
                                },
                                "rate_limit.requests_per_minute": {
                                    "description": "Minimize the number of rate limit errors.",
