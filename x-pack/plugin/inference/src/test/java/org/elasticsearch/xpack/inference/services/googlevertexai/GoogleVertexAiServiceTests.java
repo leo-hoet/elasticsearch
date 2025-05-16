@@ -39,6 +39,7 @@ import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
 import org.elasticsearch.xpack.inference.services.InferenceEventsAssertion;
 import org.elasticsearch.xpack.inference.services.ServiceFields;
 import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionModel;
+import org.elasticsearch.xpack.inference.services.googlevertexai.completion.GoogleVertexAiChatCompletionServiceSettings;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsModelTests;
 import org.elasticsearch.xpack.inference.services.googlevertexai.embeddings.GoogleVertexAiEmbeddingsServiceSettings;
@@ -488,6 +489,53 @@ public class GoogleVertexAiServiceTests extends ESTestCase {
             assertThat(embeddingsModel.getServiceSettings().dimensionsSetByUser(), is(Boolean.TRUE));
             assertThat(embeddingsModel.getTaskSettings(), is(new GoogleVertexAiEmbeddingsTaskSettings(autoTruncate, InputType.SEARCH)));
             assertThat(embeddingsModel.getSecretSettings().serviceAccountJson().toString(), is(serviceAccountJson));
+        }
+    }
+
+    public void testParsePersistedConfigWithSecrets_CreatesGoogleVertexAiChatCompletionModel() throws IOException {
+        var projectId = "project";
+        var location = "location";
+        var modelId = "model";
+        var autoTruncate = true;
+        var serviceAccountJson = """
+            {
+                "some json"
+            }
+            """;
+
+        try (var service = createGoogleVertexAiService()) {
+            var persistedConfig = getPersistedConfigMap(
+                new HashMap<>(
+                    Map.of(
+                        ServiceFields.MODEL_ID,
+                        modelId,
+                        GoogleVertexAiServiceFields.LOCATION,
+                        location,
+                        GoogleVertexAiServiceFields.PROJECT_ID,
+                        projectId
+                    )
+                ),
+                getTaskSettingsMap(autoTruncate, InputType.INGEST),
+                getSecretSettingsMap(serviceAccountJson)
+            );
+
+            var model = service.parsePersistedConfigWithSecrets(
+                "id",
+                TaskType.CHAT_COMPLETION,
+                persistedConfig.config(),
+                persistedConfig.secrets()
+            );
+
+            assertThat(model, instanceOf(GoogleVertexAiChatCompletionModel.class));
+
+            var chatCompletionModel = (GoogleVertexAiChatCompletionModel) model;
+            assertThat(chatCompletionModel.getServiceSettings().modelId(), is(modelId));
+            assertThat(chatCompletionModel.getServiceSettings().location(), is(location));
+            assertThat(chatCompletionModel.getServiceSettings().projectId(), is(projectId));
+            assertThat(chatCompletionModel.getSecretSettings().serviceAccountJson().toString(), is(serviceAccountJson));
+            assertThat(chatCompletionModel.getConfigurations().getTaskType(), equalTo(CHAT_COMPLETION));
+            assertThat(chatCompletionModel.getServiceSettings().rateLimitSettings().requestsPerTimeUnit(), equalTo(1000L));
+            assertThat(chatCompletionModel.getServiceSettings().rateLimitSettings().timeUnit(), equalTo(MINUTES));
         }
     }
 
