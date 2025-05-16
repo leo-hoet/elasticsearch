@@ -1318,7 +1318,7 @@ public class ElasticInferenceServiceTests extends ESSingleNodeTestCase {
 
             webServer.enqueue(new MockResponse().setResponseCode(200).setBody(responseJson));
 
-            // Create completion model
+            // Create chat completion model
             var model = new ElasticInferenceServiceCompletionModel(
                 "id",
                 TaskType.CHAT_COMPLETION,
@@ -1337,8 +1337,6 @@ public class ElasticInferenceServiceTests extends ESSingleNodeTestCase {
 
             try {
                 service.unifiedCompletionInfer(model, request, InferenceAction.Request.DEFAULT_TIMEOUT, listener);
-
-                // We don't need to check the actual response as we're only testing header propagation
                 listener.actionGet(TIMEOUT);
 
                 // Verify the request was sent
