@@ -423,10 +423,8 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
-        ElasticsearchStatusException statusException;
-        try (XContentBuilder builder = JsonXContent.contentBuilder()) {
-            statusException = assertThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
-        }
+        var builder = JsonXContent.contentBuilder();
+        var statusException = assertThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
 
         assertEquals(RestStatus.BAD_REQUEST, statusException.status());
         assertThat(statusException.toString(), containsString("Role [system] not supported by Google VertexAI ChatCompletion"));
@@ -445,10 +443,8 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
 
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
-        ElasticsearchStatusException statusException;
-        try (XContentBuilder builder = JsonXContent.contentBuilder()) {
-            statusException = assertThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
-        }
+        var builder = JsonXContent.contentBuilder();
+        var statusException = assertThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
 
         assertEquals(RestStatus.BAD_REQUEST, statusException.status());
         assertThat(statusException.toString(), containsString("Type [image_url] not supported by Google VertexAI ChatCompletion"));
@@ -463,6 +459,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                         "parts": [
                             { "text": "some text" },
                             { "functionCall" : {
+                                "id": "call_62136354",
                                 "name": "get_delivery_date",
                                 "args": {
                                     "order_id" : "order_12345"
@@ -555,6 +552,7 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
                         "role": "model",
                         "parts": [
                             { "functionCall" : {
+                                "id": "call_62136354",
                                 "name": "get_delivery_date",
                                 "args": {
                                     "order_id" : "order_12345"
@@ -750,10 +748,9 @@ public class GoogleVertexAiUnifiedChatCompletionRequestEntityTests extends ESTes
         UnifiedChatInput unifiedChatInput = new UnifiedChatInput(request, true);
         GoogleVertexAiUnifiedChatCompletionRequestEntity entity = new GoogleVertexAiUnifiedChatCompletionRequestEntity(unifiedChatInput);
 
-        ElasticsearchStatusException statusException;
-        try (XContentBuilder builder = JsonXContent.contentBuilder()) {
-            statusException = expectThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
-        }
+        XContentBuilder builder = JsonXContent.contentBuilder();
+        var statusException = expectThrows(ElasticsearchStatusException.class, () -> entity.toXContent(builder, ToXContent.EMPTY_PARAMS));
+
         assertThat(
             statusException.toString(),
             containsString("Tool choice value [unsupported] not supported by Google VertexAI ChatCompletion.")
